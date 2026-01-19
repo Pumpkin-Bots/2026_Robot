@@ -6,6 +6,8 @@ package frc.robot;
 
 import static edu.wpi.first.units.Units.*;
 
+import java.util.List;
+
 import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 
@@ -18,6 +20,8 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
+import frc.robot.subsystems.VisionSubsystem;
+import frc.robot.subsystems.VisionSubsystem.VisionPoseEstimate;
 
 public class RobotContainer {
     private double MaxSpeed = 1.0 * TunerConstants.kSpeedAt12Volts.in(MetersPerSecond); // kSpeedAt12Volts desired top speed
@@ -35,9 +39,11 @@ public class RobotContainer {
     private final CommandXboxController joystick = new CommandXboxController(0);
 
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
+    private final VisionSubsystem vision = new VisionSubsystem();
 
     public RobotContainer() {
         configureBindings();
+        configureVision();
     }
 
     private void configureBindings() {
@@ -75,6 +81,32 @@ public class RobotContainer {
         joystick.leftBumper().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
         drivetrain.registerTelemetry(logger::telemeterize);
+    }
+
+    /**
+     * Configures the vision subsystem to update the drivetrain pose estimator.
+     * This runs periodically to fuse vision measurements with odometry.
+     */
+    private void configureVision() {
+        // Run vision updates periodically as a default command
+        vision.setDefaultCommand(
+            vision.run(() -> {
+                // Get all valid pose estimates from cameras
+                List<VisionPoseEstimate> estimates = vision.getEstimatedPoses();
+
+                // Add each estimate to the drivetrain's pose estimator
+                for (VisionPoseEstimate estimate : estimates) {
+                    drivetrain.addVisionMeasurement(
+                        estimate.pose(),
+                        estimate.timestampSeconds(),
+                        estimate.standardDeviations()
+                    );
+                }
+
+                // Update telemetry with vision data
+                logger.updateVision(estimates, vision.isFrontLeftConnected(), vision.isFrontRightConnected());
+            })
+        );
     }
 
     public Command getAutonomousCommand() {
