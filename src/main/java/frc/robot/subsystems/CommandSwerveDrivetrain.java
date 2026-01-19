@@ -10,6 +10,10 @@ import com.ctre.phoenix6.Utils;
 import com.ctre.phoenix6.swerve.SwerveDrivetrainConstants;
 import com.ctre.phoenix6.swerve.SwerveModuleConstants;
 import com.ctre.phoenix6.swerve.SwerveRequest;
+import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.config.PIDConstants;
+import com.pathplanner.lib.config.RobotConfig;
+import com.pathplanner.lib.controllers.PPHolonomicDriveController;
 
 import edu.wpi.first.math.Matrix;
 import edu.wpi.first.math.geometry.Pose2d;
@@ -189,6 +193,50 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     }
 
     /**
+     * Configures PathPlanner's AutoBuilder for holonomic path following.
+     * This should be called once during robot initialization.
+     */
+    public void configurePathPlanner() {
+        RobotConfig config;
+        try {
+            config = RobotConfig.fromGUISettings();
+        } catch (Exception e) {
+            DriverStation.reportError("Failed to load PathPlanner robot config: " + e.getMessage(), e.getStackTrace());
+            return;
+        }
+
+        AutoBuilder.configure(
+            // Pose supplier - returns the current robot pose
+            () -> getState().Pose,
+            // Pose reset consumer - resets odometry to the given pose
+            this::resetPose,
+            // ChassisSpeeds supplier - returns current robot-relative speeds
+            () -> getState().Speeds,
+            // ChassisSpeeds consumer - drives the robot with the given speeds
+            (speeds, feedforwards) -> {
+                setControl(
+                    new SwerveRequest.ApplyRobotSpeeds()
+                        .withSpeeds(speeds)
+                        .withWheelForceFeedforwardsX(feedforwards.robotRelativeForcesXNewtons())
+                        .withWheelForceFeedforwardsY(feedforwards.robotRelativeForcesYNewtons())
+                );
+            },
+            // Path following controller
+            new PPHolonomicDriveController(
+                new PIDConstants(5.0, 0.0, 0.0),  // Translation PID
+                new PIDConstants(5.0, 0.0, 0.0)   // Rotation PID
+            ),
+            // Robot configuration from PathPlanner GUI
+            config,
+            // Should mirror path for red alliance (return false if alliance not set)
+            () -> DriverStation.getAlliance().isPresent()
+                && DriverStation.getAlliance().get() == Alliance.Red,
+            // Drivetrain subsystem for requirements
+            this
+        );
+    }
+
+    /**
      * Returns a command that applies the specified control request to this swerve drivetrain.
      *
      * @param request Function returning the request to apply
@@ -300,4 +348,5 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     public Optional<Pose2d> samplePoseAt(double timestampSeconds) {
         return super.samplePoseAt(Utils.fpgaToCurrentTime(timestampSeconds));
     }
+
 }
