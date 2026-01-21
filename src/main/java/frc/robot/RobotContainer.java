@@ -120,6 +120,7 @@ public class RobotContainer {
     }
 
     public Command getAutonomousCommand() {
-        return autoChooser.getSelected();
+        // Build an auto from PathPlanner using the "Example Path" path
+        return AutoBuilder.buildAuto("Example Auto");
     }
 }
