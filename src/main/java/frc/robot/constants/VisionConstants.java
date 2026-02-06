@@ -39,27 +39,27 @@ public final class VisionConstants {
      */
     public static final Transform3d ROBOT_TO_FRONT_LEFT_CAMERA = new Transform3d(
         new Translation3d(
-            0.3429,  // X: 25cm forward from robot center
-            0.3112,  // Y: 25cm to the left of robot center
-            0.2520   // Z: 20cm above robot center
+            -0.2667,  // X: 25cm forward from robot center
+            0.1143,  // Y: 25cm to the left of robot center
+            0.2286   // Z: 20cm above robot center
         ),
         new Rotation3d(
             0.0,                    // Roll: 0 degrees
             Math.toRadians(0),  // Pitch: tilted down 15 degrees
-            Math.toRadians(-25.0)    // Yaw: angled 15 degrees to the left
+            Math.toRadians(0.0)    // Yaw: angled 15 degrees to the left
         )
     );
 
     public static final Transform3d ROBOT_TO_FRONT_RIGHT_CAMERA = new Transform3d(
         new Translation3d(
-            0.3429,   // X: 25cm forward from robot center
-            -0.3113,  // Y: 25cm to the right of robot center
-            0.2520    // Z: 20cm above robot center
+            0.2667,   // X: 25cm forward from robot center
+            -0.1143,  // Y: 25cm to the right of robot center
+            0.2286    // Z: 20cm above robot center
         ),
         new Rotation3d(
             0.0,                     // Roll: 0 degrees
             Math.toRadians(0),   // Pitch: tilted down 15 degrees
-            Math.toRadians(25.0)    // Yaw: angled 15 degrees to the right
+            Math.toRadians(0.0)    // Yaw: angled 15 degrees to the right
         )
     );
 
