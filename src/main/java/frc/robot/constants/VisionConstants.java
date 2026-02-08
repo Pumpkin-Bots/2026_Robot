@@ -34,7 +34,7 @@ public final class VisionConstants {
      * - Pitch: Rotation around Y axis (positive = tilted up)
      * - Yaw: Rotation around Z axis (positive = rotated left)
      *
-     * TODO: Measure and update these values for your robot!
+     * TODO: Measure and update these values once we find the final placement for the drive cameras!
      * These are placeholder values assuming cameras are mounted at the front corners.
      */
     public static final Transform3d ROBOT_TO_FRONT_LEFT_CAMERA = new Transform3d(
