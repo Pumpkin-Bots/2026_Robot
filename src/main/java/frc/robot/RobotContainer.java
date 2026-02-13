@@ -19,6 +19,10 @@ import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
+import frc.robot.commands.HomeMode;
+import frc.robot.commands.TrenchMode;
+import frc.robot.commands.ShooterMode;
+
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.GroundIntakeSubsystem;
@@ -81,9 +85,18 @@ public class RobotContainer {
         // A → shooter mode  (pivot to -4 rot / horizontal, rollers at 20 %)
         // B → trench mode   (pivot to -2 rot / ~45°, rollers off)
         // Y → home position (pivot to 0 rot / vertical, rollers off)
-        joystick.a().onTrue(intake.shooterCommand());
-        joystick.b().onTrue(intake.trenchCommand());
-        joystick.y().onTrue(intake.homeCommand());
+        
+        joystick.y().onTrue(new HomeMode(intake));
+        joystick.b().onTrue(new TrenchMode(intake));
+        joystick.a().onTrue(new ShooterMode(intake));
+
+        // Apply disabled behaviour to the intake while the robot is disabled
+        // (pivots: StaticBrake; roller: NeutralOut / coast)
+        RobotModeTriggers.disabled().whileTrue(intake.disabledCommand());
+
+        // Default command: continuously re-applies the current intake state so
+        // motor outputs are restored correctly after a disabled → enabled transition.
+        intake.setDefaultCommand(intake.maintainStateCommand());
 
         // Run SysId routines when holding back/start and X/Y.
         // Note that each routine should be run exactly once in a single log.

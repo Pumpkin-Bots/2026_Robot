@@ -39,7 +39,7 @@ public final class Constants {
         public static final double PIVOT_KD = 0.1;
 
         // ---- Roller speed ----
-        public static final double ROLLER_INTAKE_SPEED = 0.20; // 20% duty cycle
+        public static final double ROLLER_INTAKE_SPEED = -0.60; // 60% duty cycle
 
         // ---- Position tolerance ----
         public static final double PIVOT_TOLERANCE_ROTATIONS = 0.05;

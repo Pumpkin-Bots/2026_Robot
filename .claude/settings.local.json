@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(JAVA_HOME=\"C:/Users/Public/wpilib/2026/jdk\" ./gradlew:*)",
-      "Bash(\"C:/Users/Public/wpilib/2026/jdk/bin/javap\":*)"
+      "Bash(\"C:/Users/Public/wpilib/2026/jdk/bin/javap\":*)",
+      "WebFetch(domain:docs.wpilib.org)"
     ]
   }
 }
