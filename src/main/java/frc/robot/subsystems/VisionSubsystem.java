@@ -18,7 +18,7 @@ import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
-import frc.robot.constants.VisionConstants;
+import frc.robot.constants.Constants.VisionConstants;
 
 /**
  * Subsystem for managing multiple PhotonVision cameras and fusing their
