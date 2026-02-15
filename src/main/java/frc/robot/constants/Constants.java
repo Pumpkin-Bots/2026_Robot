@@ -16,6 +16,34 @@ import edu.wpi.first.math.numbers.N3;
 
 public final class Constants {
 
+    public static final class ShooterConstants{
+        public static final int TURRET_ROTATOR_ID = 25;
+        public static final int SHOOTER_RACK_ID = 26;
+        public static final int SHOOTER_FLYWHEEL_ID = 27;
+
+
+        public static final double ROTATOR_KP = 12;
+        public static final double ROTATOR_KI = 0.0;
+        public static final double ROTATOR_KD = 0.35;
+
+        public static final double RACK_KP = 20;
+        public static final double RACK_KI = 0.0;
+        public static final double RACK_KD = 0.25;
+
+        public static final double FLYWHEEL_KP = 0.04;
+        public static final double FLYWHEEL_KI = 0.125;
+        public static final double FLYWHEEL_KD = 0;
+
+
+
+    }
+
+    public static final class TurretConstants {
+        public static final int TURRET_INDEXER_ID = 24;
+
+        public static final double TURRET_INDEXER_SPEED = 1; // 25%
+    }
+
     public static final class GroundIntakeConstants {
 
         // ---- Motor CAN IDs ----
@@ -27,7 +55,7 @@ public final class Constants {
         // NOTE: These are rotor rotations. Multiply by gear ratio if needed.
         public static final double HOME_POSITION    =  0.0;
         public static final double TRENCH_POSITION  = -2.0;
-        public static final double SHOOTER_POSITION = -4.0;
+        public static final double SHOOTER_POSITION = -4.7;
 
         // ---- Pivot PID gains (Slot 0) ----
         //   kP: raise if pivot is slow, lower if it oscillates
@@ -39,7 +67,7 @@ public final class Constants {
         public static final double PIVOT_KD = 0.1;
 
         // ---- Roller speed ----
-        public static final double ROLLER_INTAKE_SPEED = -0.60; // 60% duty cycle
+        public static final double ROLLER_INTAKE_SPEED = -0.95; // 60% duty cycle
 
         // ---- Position tolerance ----
         public static final double PIVOT_TOLERANCE_ROTATIONS = 0.05;

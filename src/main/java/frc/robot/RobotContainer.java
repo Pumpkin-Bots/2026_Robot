@@ -26,6 +26,8 @@ import frc.robot.commands.ShooterMode;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.GroundIntakeSubsystem;
+import frc.robot.subsystems.TurretSubsystem;
+import frc.robot.subsystems.ShooterSubsystem;
 import frc.robot.subsystems.VisionSubsystem;
 import frc.robot.subsystems.VisionSubsystem.VisionPoseEstimate;
 
@@ -46,6 +48,8 @@ public class RobotContainer {
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
     private final VisionSubsystem vision = new VisionSubsystem();
     private final GroundIntakeSubsystem intake = new GroundIntakeSubsystem();
+    private final TurretSubsystem turret = new TurretSubsystem();
+    private final ShooterSubsystem shooter = new ShooterSubsystem();
 
     private final SendableChooser<Command> autoChooser;
 
@@ -86,9 +90,9 @@ public class RobotContainer {
         // B → trench mode   (pivot to -2 rot / ~45°, rollers off)
         // Y → home position (pivot to 0 rot / vertical, rollers off)
         
-        joystick.y().onTrue(new HomeMode(intake));
-        joystick.b().onTrue(new TrenchMode(intake));
-        joystick.a().onTrue(new ShooterMode(intake));
+        joystick.y().onTrue(new HomeMode(intake, turret, shooter));
+        joystick.b().onTrue(new TrenchMode(intake, turret, shooter));
+        joystick.a().onTrue(new ShooterMode(intake, turret, shooter));
 
         // Apply disabled behaviour to the intake while the robot is disabled
         // (pivots: StaticBrake; roller: NeutralOut / coast)
