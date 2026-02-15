@@ -34,8 +34,6 @@ public final class Constants {
         public static final double FLYWHEEL_KI = 0.125;
         public static final double FLYWHEEL_KD = 0;
 
-
-
     }
 
     public static final class TurretConstants {
@@ -76,7 +74,7 @@ public final class Constants {
     public static final class VisionConstants {
 
         // Camera names as configured in PhotonVision
-        public static final String FRONT_LEFT_CAMERA_NAME  = "Front_Left_Camera";
+        public static final String BACK_LEFT_CAMERA_NAME  = "Back_Left_Camera";
         public static final String FRONT_RIGHT_CAMERA_NAME = "Front_Right_Camera";
 
         /**
@@ -84,7 +82,7 @@ public final class Constants {
          * X: Forward, Y: Left, Z: Up
          * TODO: Update once final camera placement is confirmed.
          */
-        public static final Transform3d ROBOT_TO_FRONT_LEFT_CAMERA = new Transform3d(
+        public static final Transform3d ROBOT_TO_BACK_LEFT_CAMERA = new Transform3d(
             new Translation3d(-0.2667, 0.1143, 0.2286),
             new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(0.0))
         );

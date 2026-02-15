@@ -39,7 +39,7 @@ public class VisionSubsystem extends SubsystemBase {
     ) {}
 
     // Camera instances
-    private final PhotonCamera frontLeftCamera;
+    private final PhotonCamera backLeftCamera;
     private final PhotonCamera frontRightCamera;
 
     // Pose estimators for each camera (using new 2-argument constructor)
@@ -69,13 +69,13 @@ public class VisionSubsystem extends SubsystemBase {
 
     public VisionSubsystem() {
         // Initialize cameras
-        frontLeftCamera = new PhotonCamera(VisionConstants.FRONT_LEFT_CAMERA_NAME);
+        backLeftCamera = new PhotonCamera(VisionConstants.BACK_LEFT_CAMERA_NAME);
         frontRightCamera = new PhotonCamera(VisionConstants.FRONT_RIGHT_CAMERA_NAME);
 
         // Initialize pose estimators using new 2-argument constructor (PhotonVision 2026 API)
         frontLeftEstimator = new PhotonPoseEstimator(
             VisionConstants.APRIL_TAG_FIELD_LAYOUT,
-            VisionConstants.ROBOT_TO_FRONT_LEFT_CAMERA
+            VisionConstants.ROBOT_TO_BACK_LEFT_CAMERA
         );
 
         frontRightEstimator = new PhotonPoseEstimator(
@@ -85,10 +85,10 @@ public class VisionSubsystem extends SubsystemBase {
 
         // Register cameras for iteration
         cameras.add(new CameraConfig(
-            frontLeftCamera,
+            backLeftCamera,
             frontLeftEstimator,
-            VisionConstants.ROBOT_TO_FRONT_LEFT_CAMERA,
-            VisionConstants.FRONT_LEFT_CAMERA_NAME
+            VisionConstants.ROBOT_TO_BACK_LEFT_CAMERA,
+            VisionConstants.BACK_LEFT_CAMERA_NAME
         ));
         cameras.add(new CameraConfig(
             frontRightCamera,
@@ -267,8 +267,8 @@ public class VisionSubsystem extends SubsystemBase {
      *
      * @return true if connected, false otherwise
      */
-    public boolean isFrontLeftConnected() {
-        return frontLeftCamera.isConnected();
+    public boolean isBackLeftConnected() {
+        return backLeftCamera.isConnected();
     }
 
     /**
