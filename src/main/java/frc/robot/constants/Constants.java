@@ -83,13 +83,13 @@ public final class Constants {
          * TODO: Update once final camera placement is confirmed.
          */
         public static final Transform3d ROBOT_TO_BACK_LEFT_CAMERA = new Transform3d(
-            new Translation3d(-0.2667, 0.1143, 0.2286),
-            new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(0.0))
+            new Translation3d(-0.165, -0.305, 0.343),
+            new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(132.856))
         );
 
         public static final Transform3d ROBOT_TO_FRONT_RIGHT_CAMERA = new Transform3d(
-            new Translation3d(0.2667, -0.1143, 0.2286),
-            new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(0.0))
+            new Translation3d(0.1651, 0.038, 0.343),
+            new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(-43.597))
         );
 
         public static final AprilTagFieldLayout APRIL_TAG_FIELD_LAYOUT =
