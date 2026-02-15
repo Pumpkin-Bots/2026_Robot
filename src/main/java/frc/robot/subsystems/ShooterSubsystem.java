@@ -37,6 +37,22 @@ public class ShooterSubsystem implements Subsystem {
         m_turretRotatorMotor.getConfigurator().apply(turretRotatorGains);
         m_shooterRackMotor.getConfigurator().apply(rackGains);
     }
+    public void aimShooter(){
+        /* takes in target position and the robot's current position and velocity vectors and calculates 
+        where the shooter should aim as its state-space position. This is to account for the time it takes 
+        for the projectile to reach the target. Then, it calculates the necessary turret rotation, 
+        shooter rack position, and shooter flywheel velocity to hit the target and sets those values to the motors.*/
+    }
+
+    public void calculateVirtualTargetPosition(){
+        /* takes in target position and the robot's current position and velocity vectors and calculates 
+        where the shooter should aim as its state-space position. This is to account for the time it takes 
+        for the projectile to reach the target.*/
+    }
+    public void calculateShooterActions(){
+        /* takes in virtual target position and calculates the necessary turret rotation, 
+        shooter rack position, and shooter flywheel velocity to hit the target.*/
+    }
        
 
     public void setTurretRotatorPosition(double position) {
