@@ -26,20 +26,56 @@ public final class Constants {
         public static final double ROTATOR_KI = 0.0;
         public static final double ROTATOR_KD = 0.35;
 
+        public static final double TURRET_ROTATOR_GEAR_RATIO = -1.0 / 10.0;
+        public static final double TURRET_ROTATOR_MIN_ANGLE = -45; // will be -90 deg
+        public static final double TURRET_ROTATOR_MAX_ANGLE = 45; // will be 270 deg
+        
+
         public static final double RACK_KP = 20;
         public static final double RACK_KI = 0.0;
         public static final double RACK_KD = 0.25;
 
+        public static final double RACK_GEAR_RATIO = -1.0 / 288.0;
+        public static final double RACK_MIN_ANGLE = 15; // 15 deg
+        public static final double RACK_MAX_ANGLE = 45; // 45 deg
+        // Rack gear ratio is backwards
+        // MAX Rotations is at maximum height (lower shot)
+        // MIN Rotations is at minimum height (higher shot)
+
         public static final double FLYWHEEL_KP = 0.04;
         public static final double FLYWHEEL_KI = 0.125;
         public static final double FLYWHEEL_KD = 0;
+
+        public static final double FLYWHEEL_GEAR_RATIO = 24.0 / 36.0;
+        public static final double FLYWHEEL_LARGE_DIAMETER_METERS = 0.1016; // 4 inches
+        public static final double FLYWHEEL_SMALL_DIAMETER_METERS = 0.0508; // 2 inches
+        public static final double FLYWHEEL_MAX_REV_PER_SEC = 70.0;
+
+        // Ball launch position relative to robot center
+        // X: forward offset (meters), Z: height above floor (meters)
+        // TODO: measure from CAD or physical robot
+        public static final double BALL_LAUNCH_FRONT_OFFSET_METERS = -0.2159;
+        public static final double BALL_LAUNCH_HEIGHT_METERS = 0.4826;
+
+        // Field-relative 3D position of the shooting target (x, y, z in meters)
+        // Derived from CAD: origin (-325.406, -158.84375, 0) in, target (-158.84375, 0, 56.5) in
+        public static final double TARGET_X_METERS = 4.2307; // long axis
+        public static final double TARGET_Y_METERS = 4.0346; // short axis
+        public static final double TARGET_Z_METERS = 1.4351; // height
+
+        // Distance thresholds for rack angle interpolation
+        // At or below MIN_DISTANCE the rack is at its minimum angle (lowest shot).
+        // At or above MAX_DISTANCE the rack is at its maximum angle (highest shot).
+        // Linearly interpolated between the two.
+        public static final double RACK_MIN_DISTANCE_METERS = 2.0;
+        public static final double RACK_MAX_DISTANCE_METERS = 5.0;
 
     }
 
     public static final class TurretConstants {
         public static final int TURRET_INDEXER_ID = 24;
 
-        public static final double TURRET_INDEXER_SPEED = 1; // 25%
+        public static final double TURRET_INDEXER_SPEED = 1; // 100%
     }
 
     public static final class GroundIntakeConstants {
@@ -88,8 +124,8 @@ public final class Constants {
         );
 
         public static final Transform3d ROBOT_TO_FRONT_RIGHT_CAMERA = new Transform3d(
-            new Translation3d(0.1651, 0.038, 0.343),
-            new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(-43.597))
+            new Translation3d(0.2159, 0.1778, 0.343),
+            new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(-105))
         );
 
         public static final AprilTagFieldLayout APRIL_TAG_FIELD_LAYOUT =
