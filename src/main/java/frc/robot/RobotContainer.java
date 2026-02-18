@@ -22,6 +22,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 import frc.robot.commands.HomeMode;
 import frc.robot.commands.TrenchMode;
 import frc.robot.commands.ShooterMode;
+import frc.robot.commands.JamMode;
 
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
@@ -83,7 +84,7 @@ public class RobotContainer {
             drivetrain.applyRequest(() -> idle).ignoringDisable(true)
         );
 
-        joystick.x().whileTrue(drivetrain.applyRequest(() -> brake));
+    //TO DO:    joystick.rightbumper().whileTrue(drivetrain.applyRequest(() -> brake));
 
         // ---- Intake / robot-mode buttons ----
         // A → shooter mode  (pivot to -4 rot / horizontal, rollers at 20 %)
@@ -93,6 +94,7 @@ public class RobotContainer {
         joystick.y().onTrue(new HomeMode(intake, turret, shooter));
         joystick.b().onTrue(new TrenchMode(intake, turret, shooter));
         joystick.a().onTrue(new ShooterMode(intake, turret, shooter));
+        joystick.x().onTrue(new JamMode(intake, turret, shooter));
 
         // Apply disabled behaviour while the robot is disabled
         RobotModeTriggers.disabled().whileTrue(intake.disabledCommand());
@@ -139,7 +141,7 @@ public class RobotContainer {
                 }
 
                 // Update telemetry with vision data
-                logger.updateVision(estimates, vision.isBackLeftConnected(), vision.isFrontRightConnected());
+                logger.updateVision(estimates, vision.isBackLeftConnected(), vision.isFrontRightConnected(), vision.isIntakeConnected());
             })
         );
     }

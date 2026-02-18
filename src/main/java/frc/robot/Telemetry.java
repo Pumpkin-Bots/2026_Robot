@@ -66,6 +66,7 @@ public class Telemetry {
     private final NetworkTable visionTable = inst.getTable("Vision");
     private final BooleanPublisher frontLeftConnected = visionTable.getBooleanTopic("FrontLeftConnected").publish();
     private final BooleanPublisher frontRightConnected = visionTable.getBooleanTopic("FrontRightConnected").publish();
+    private final BooleanPublisher intakeConnected = visionTable.getBooleanTopic("IntakeConnected").publish();
     private final IntegerPublisher totalTagsDetected = visionTable.getIntegerTopic("TotalTagsDetected").publish();
     private final StructArrayPublisher<Pose2d> visionPoses = visionTable.getStructArrayTopic("EstimatedPoses", Pose2d.struct).publish();
     private final DoublePublisher avgTagDistance = visionTable.getDoubleTopic("AvgTagDistance").publish();
@@ -145,13 +146,15 @@ public class Telemetry {
      * Update vision telemetry data.
      *
      * @param estimates List of vision pose estimates from cameras
-     * @param frontLeftConnected Whether the front left camera is connected
+     * @param frontLeftConnected Whether the back left camera is connected
      * @param frontRightConnected Whether the front right camera is connected
+     * @param intakeCamConnected Whether the intake camera is connected
      */
-    public void updateVision(List<VisionPoseEstimate> estimates, boolean frontLeftCamConnected, boolean frontRightCamConnected) {
+    public void updateVision(List<VisionPoseEstimate> estimates, boolean frontLeftCamConnected, boolean frontRightCamConnected, boolean intakeCamConnected) {
         // Publish camera connection status
         frontLeftConnected.set(frontLeftCamConnected);
         frontRightConnected.set(frontRightCamConnected);
+        intakeConnected.set(intakeCamConnected);
 
         // Calculate totals from estimates
         int totalTags = 0;
@@ -173,6 +176,7 @@ public class Telemetry {
         // Log to SignalLogger
         SignalLogger.writeBoolean("Vision/FrontLeftConnected", frontLeftCamConnected);
         SignalLogger.writeBoolean("Vision/FrontRightConnected", frontRightCamConnected);
+        SignalLogger.writeBoolean("Vision/IntakeConnected", intakeCamConnected);
         SignalLogger.writeInteger("Vision/TotalTagsDetected", totalTags, "tags");
         SignalLogger.writeDouble("Vision/AvgTagDistance", totalTags > 0 ? totalDistance / totalTags : 0.0, "meters");
 

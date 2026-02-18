@@ -41,10 +41,12 @@ public class VisionSubsystem extends SubsystemBase {
     // Camera instances
     private final PhotonCamera backLeftCamera;
     private final PhotonCamera frontRightCamera;
+    private final PhotonCamera intakeCamera;
 
     // Pose estimators for each camera (using new 2-argument constructor)
     private final PhotonPoseEstimator frontLeftEstimator;
     private final PhotonPoseEstimator frontRightEstimator;
+    private final PhotonPoseEstimator intakeEstimator;
 
     // List of all cameras and estimators for iteration
     private final List<CameraConfig> cameras = new ArrayList<>();
@@ -71,6 +73,7 @@ public class VisionSubsystem extends SubsystemBase {
         // Initialize cameras
         backLeftCamera = new PhotonCamera(VisionConstants.BACK_LEFT_CAMERA_NAME);
         frontRightCamera = new PhotonCamera(VisionConstants.FRONT_RIGHT_CAMERA_NAME);
+        intakeCamera = new PhotonCamera(VisionConstants.INTAKE_CAMERA_NAME);
 
         // Initialize pose estimators using new 2-argument constructor (PhotonVision 2026 API)
         frontLeftEstimator = new PhotonPoseEstimator(
@@ -81,6 +84,11 @@ public class VisionSubsystem extends SubsystemBase {
         frontRightEstimator = new PhotonPoseEstimator(
             VisionConstants.APRIL_TAG_FIELD_LAYOUT,
             VisionConstants.ROBOT_TO_FRONT_RIGHT_CAMERA
+        );
+
+        intakeEstimator = new PhotonPoseEstimator(
+            VisionConstants.APRIL_TAG_FIELD_LAYOUT,
+            VisionConstants.ROBOT_TO_INTAKE_CAMERA
         );
 
         // Register cameras for iteration
@@ -95,6 +103,12 @@ public class VisionSubsystem extends SubsystemBase {
             frontRightEstimator,
             VisionConstants.ROBOT_TO_FRONT_RIGHT_CAMERA,
             VisionConstants.FRONT_RIGHT_CAMERA_NAME
+        ));
+        cameras.add(new CameraConfig(
+            intakeCamera,
+            intakeEstimator,
+            VisionConstants.ROBOT_TO_INTAKE_CAMERA,
+            VisionConstants.INTAKE_CAMERA_NAME
         ));
     }
 
@@ -278,6 +292,15 @@ public class VisionSubsystem extends SubsystemBase {
      */
     public boolean isFrontRightConnected() {
         return frontRightCamera.isConnected();
+    }
+
+   /**
+     * Checks if the intake camera is connected.
+     *
+     * @return true if connected, false otherwise
+     */
+    public boolean isIntakeConnected() {
+        return intakeCamera.isConnected();
     }
 
     @Override

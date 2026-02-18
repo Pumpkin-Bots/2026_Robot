@@ -22,13 +22,13 @@ public final class Constants {
         public static final int SHOOTER_FLYWHEEL_ID = 27;
 
 
-        public static final double ROTATOR_KP = 12;
+        public static final double ROTATOR_KP = 12; // optimal is 12, but too violent, need stronger chain.
         public static final double ROTATOR_KI = 0.0;
         public static final double ROTATOR_KD = 0.35;
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -1.0 / 10.0;
-        public static final double TURRET_ROTATOR_MIN_ANGLE = -45; // will be -90 deg
-        public static final double TURRET_ROTATOR_MAX_ANGLE = 45; // will be 270 deg
+        public static final double TURRET_ROTATOR_MIN_ANGLE = -90; 
+        public static final double TURRET_ROTATOR_MAX_ANGLE = 90; 
         
 
         public static final double RACK_KP = 20;
@@ -59,8 +59,8 @@ public final class Constants {
 
         // Field-relative 3D position of the shooting target (x, y, z in meters)
         // Derived from CAD: origin (-325.406, -158.84375, 0) in, target (-158.84375, 0, 56.5) in
-        public static final double TARGET_X_METERS = 4.2307; // long axis
-        public static final double TARGET_Y_METERS = 4.0346; // short axis
+        public static final double TARGET_X_METERS = 4.62; // long axis was 4.2307
+        public static final double TARGET_Y_METERS = 4.03; // short axis was 4.0346
         public static final double TARGET_Z_METERS = 1.4351; // height
 
         // Distance thresholds for rack angle interpolation
@@ -102,6 +102,7 @@ public final class Constants {
 
         // ---- Roller speed ----
         public static final double ROLLER_INTAKE_SPEED = -0.95; // 60% duty cycle
+        public static final double ROLLER_JAM_SPEED = 0.2;
 
         // ---- Position tolerance ----
         public static final double PIVOT_TOLERANCE_ROTATIONS = 0.05;
@@ -112,6 +113,7 @@ public final class Constants {
         // Camera names as configured in PhotonVision
         public static final String BACK_LEFT_CAMERA_NAME  = "Back_Left_Camera";
         public static final String FRONT_RIGHT_CAMERA_NAME = "Front_Right_Camera";
+        public static final String INTAKE_CAMERA_NAME = "Intake_Camera";
 
         /**
          * Camera mounting transforms relative to robot center.
@@ -119,13 +121,19 @@ public final class Constants {
          * TODO: Update once final camera placement is confirmed.
          */
         public static final Transform3d ROBOT_TO_BACK_LEFT_CAMERA = new Transform3d(
-            new Translation3d(-0.165, -0.305, 0.343),
-            new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(132.856))
+            new Translation3d(-0.229, -0.229, 0.340),
+            new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-116.194))
         );
 
         public static final Transform3d ROBOT_TO_FRONT_RIGHT_CAMERA = new Transform3d(
-            new Translation3d(0.2159, 0.1778, 0.343),
-            new Rotation3d(0.0, Math.toRadians(0), Math.toRadians(-105))
+            new Translation3d(-0.0635, 0.201, 0.340),
+            new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-63.806))
+        );
+
+        // TO DO: update location of intake camera
+        public static final Transform3d ROBOT_TO_INTAKE_CAMERA = new Transform3d(
+            new Translation3d(-0.0635, 0.201, 0.340),
+            new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-63.806))
         );
 
         public static final AprilTagFieldLayout APRIL_TAG_FIELD_LAYOUT =
