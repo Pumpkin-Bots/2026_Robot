@@ -35,9 +35,9 @@ public final class Constants {
         public static final double RACK_KI = 0.0;
         public static final double RACK_KD = 0.25;
 
-        public static final double RACK_GEAR_RATIO = -1.0 / 288.0;
-        public static final double RACK_MIN_ANGLE = 15; // 15 deg
-        public static final double RACK_MAX_ANGLE = 45; // 45 deg
+        public static final double RACK_GEAR_RATIO = -1.0 / 333.33;
+        public static final double RACK_MIN_ANGLE = 21; // 15 deg
+        public static final double RACK_MAX_ANGLE = 48; // 45 deg
         // Rack gear ratio is backwards
         // MAX Rotations is at maximum height (lower shot)
         // MIN Rotations is at minimum height (higher shot)
@@ -59,8 +59,8 @@ public final class Constants {
 
         // Field-relative 3D position of the shooting target (x, y, z in meters)
         // Derived from CAD: origin (-325.406, -158.84375, 0) in, target (-158.84375, 0, 56.5) in
-        public static final double TARGET_X_METERS = 4.62; // long axis was 4.2307
-        public static final double TARGET_Y_METERS = 4.03; // short axis was 4.0346
+        public static final double TARGET_X_METERS = 3.75; // long axis was 4.2307
+        public static final double TARGET_Y_METERS = 4.5; // short axis was 4.0346
         public static final double TARGET_Z_METERS = 1.4351; // height
 
         // Distance thresholds for rack angle interpolation
@@ -122,7 +122,7 @@ public final class Constants {
          */
         public static final Transform3d ROBOT_TO_BACK_LEFT_CAMERA = new Transform3d(
             new Translation3d(-0.229, -0.229, 0.340),
-            new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-116.194))
+            new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(116.194))
         );
 
         public static final Transform3d ROBOT_TO_FRONT_RIGHT_CAMERA = new Transform3d(
@@ -132,8 +132,8 @@ public final class Constants {
 
         // TO DO: update location of intake camera
         public static final Transform3d ROBOT_TO_INTAKE_CAMERA = new Transform3d(
-            new Translation3d(-0.0635, 0.201, 0.340),
-            new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-63.806))
+            new Translation3d(0.4, 0.286, 0.39),
+            new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(0))
         );
 
         public static final AprilTagFieldLayout APRIL_TAG_FIELD_LAYOUT =
