@@ -28,8 +28,8 @@ public final class Constants {
         public static final double ROTATOR_KD = 0.35;
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
-        public static final double TURRET_ROTATOR_MIN_ANGLE = -180;
-        public static final double TURRET_ROTATOR_MAX_ANGLE = 270;
+        public static final double TURRET_ROTATOR_MIN_ANGLE = -135;
+        public static final double TURRET_ROTATOR_MAX_ANGLE = 45;
 
 
         public static final double RACK_KP = 20;
@@ -51,27 +51,10 @@ public final class Constants {
         public static final double FLYWHEEL_LARGE_DIAMETER_METERS = 0.1016; // 4 inches
         public static final double FLYWHEEL_SMALL_DIAMETER_METERS = 0.0508; // 2 inches
         public static final double FLYWHEEL_MAX_REV_PER_SEC = 70.0;
-        // Effective flywheel diameter for muzzle velocity calculations (meters).
-        // Replaces raw average of large/small diameters by capturing real-world effects
-        // (compression energy recovery, contact asymmetry between the two wheel sizes).
-        // When this is calibrated empirically, set kBaseVelocity to 0.0.
-        // Starting value = raw average: (0.1016 + 0.0508) / 2 = 0.0762m (3 inches).
-        // Calibrate using ShooterSubsystem.calculateEffectiveDiameter() from a test shot.
+        // Effective flywheel diameter used to convert motor RPS to muzzle velocity
+        // for motion compensation flight-time estimation.
+        // raw average: (0.1016 + 0.0508) / 2 = 0.0762m (3 inches)
         public static final double FLYWHEEL_EFFECTIVE_DIAMETER_METERS = 0.0762;
-
-        // Flywheel surface speed subtracted from the physics-computed velocity (m/s).
-        // Accounts for ball elasticity — the ball stores and returns energy on contact,
-        // so the flywheel needs less speed than pure physics predicts to achieve the desired launch.
-        // Set to 0.0 once FLYWHEEL_EFFECTIVE_DIAMETER_METERS has been calibrated empirically.
-        public static final double kBaseVelocity = 0.25; // m/s, tune on robot
-
-        // Rack angle trim offset (degrees) applied only to physics calculations
-        // (flywheel velocity and virtual target compensation). Does NOT move the rack motor.
-        // Positive → physics assume shallower angle → less flywheel speed → shorter shot.
-        // Negative → physics assume steeper angle → more flywheel speed → longer shot.
-        // Tune empirically if the shot is consistently long or short after calibrating
-        // FLYWHEEL_EFFECTIVE_DIAMETER_METERS.
-        public static final double RACK_ANGLE_TRIM_DEG = 15;
 
         // Ball launch position relative to robot center
         // X: forward offset (meters), Z: height above floor (meters)
@@ -86,13 +69,6 @@ public final class Constants {
         public static final double TARGET_X_METERS = TAG_26_POSE.getX() + 0.597;
         public static final double TARGET_Y_METERS = TAG_26_POSE.getY() + 0;
         public static final double TARGET_Z_METERS = TAG_26_POSE.getZ() + 0.610;
-
-        // Distance thresholds for rack angle interpolation
-        // At or below MIN_DISTANCE the rack is at its minimum angle (lowest shot).
-        // At or above MAX_DISTANCE the rack is at its maximum angle (highest shot).
-        // Linearly interpolated between the two.
-        public static final double RACK_MIN_DISTANCE_METERS = 2.0;
-        public static final double RACK_MAX_DISTANCE_METERS = 5.0;
 
     }
 

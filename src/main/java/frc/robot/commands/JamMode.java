@@ -30,9 +30,7 @@ public class JamMode extends Command {
         m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_JAM_SPEED);
         m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
 
-        double rackAngle = m_Shooter.computeRackAngleDeg(TARGET_POSITION);
-        m_Shooter.applyRackAngle(TARGET_POSITION);
-        m_Shooter.calculateShooterActions(TARGET_POSITION, rackAngle);
+        m_Shooter.calculateShooterActions(TARGET_POSITION);
     }
 
     @Override
