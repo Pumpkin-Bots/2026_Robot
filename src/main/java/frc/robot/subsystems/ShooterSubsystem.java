@@ -1,5 +1,6 @@
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.SoftwareLimitSwitchConfigs;
 import com.ctre.phoenix6.controls.NeutralOut;
@@ -11,6 +12,7 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import frc.robot.constants.Constants;
@@ -22,6 +24,8 @@ public class ShooterSubsystem implements Subsystem {
     private final TalonFX m_shooterRackMotor;
     private final TalonFX m_shooterFlywheelMotor;
     private final CommandSwerveDrivetrain m_drivetrain;
+    private boolean m_turretZeroed = false;
+    private double m_lastCommandedTurretAngle = 0.0;
 
     private static final Slot0Configs turretRotatorGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.ROTATOR_KP)
@@ -63,6 +67,10 @@ public class ShooterSubsystem implements Subsystem {
         .withReverseSoftLimitEnable(true)
         .withReverseSoftLimitThreshold(Math.min(0, RACK_LIMIT_ROTATIONS));
 
+    private static final CurrentLimitsConfigs flywheelCurrentLimits = new CurrentLimitsConfigs()
+        .withSupplyCurrentLimitEnable(true)
+        .withSupplyCurrentLimit(40);
+
     public ShooterSubsystem(CommandSwerveDrivetrain drivetrain) {
         m_drivetrain = drivetrain;
 
@@ -75,6 +83,7 @@ public class ShooterSubsystem implements Subsystem {
         m_shooterRackMotor.getConfigurator().apply(rackGains);
         m_shooterRackMotor.getConfigurator().apply(rackSoftLimits);
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelGains);
+        m_shooterFlywheelMotor.getConfigurator().apply(flywheelCurrentLimits);
     }
 
     /**
@@ -106,8 +115,7 @@ public class ShooterSubsystem implements Subsystem {
             Translation3d launchPosition,
             ChassisSpeeds fieldRelativeSpeeds,
             double rackAngleDeg) {
-        double avgDiameter = (Constants.ShooterConstants.FLYWHEEL_LARGE_DIAMETER_METERS
-            + Constants.ShooterConstants.FLYWHEEL_SMALL_DIAMETER_METERS) / 2.0;
+        double avgDiameter = Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS;
         // elevation = 90° - rackAngle: rack angle is measured from vertical, not horizontal
         double elevAngleRad = Math.toRadians(90.0 - rackAngleDeg);
         double cosElev = Math.cos(elevAngleRad);
@@ -193,8 +201,14 @@ public class ShooterSubsystem implements Subsystem {
         ChassisSpeeds fieldRelativeSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
             m_drivetrain.getState().Speeds, robotPose.getRotation());
         Translation3d launchPosition = calculateLaunchPosition(robotPose);
+
+        // physicsRackAngleDeg is used only for trajectory calculations (virtual target
+        // compensation and flywheel velocity). The rack motor is commanded at rackAngleDeg
+        // so the physical angle is unaffected by the trim.
+        double physicsRackAngleDeg = rackAngleDeg + Constants.ShooterConstants.RACK_ANGLE_TRIM_DEG;
+
         Translation3d virtualTarget = calculateVirtualTargetPosition(
-            targetPosition, launchPosition, fieldRelativeSpeeds, rackAngleDeg);
+            targetPosition, launchPosition, fieldRelativeSpeeds, physicsRackAngleDeg);
 
         // Turret: field-relative angle to virtual target, converted to robot-relative
         double dx = virtualTarget.getX() - launchPosition.getX();
@@ -207,7 +221,7 @@ public class ShooterSubsystem implements Subsystem {
         // elevation = 90° - rackAngle: rack angle is measured from vertical, not horizontal
         double horizontalDist = Math.hypot(dx, dy);
         double dz = virtualTarget.getZ() - launchPosition.getZ();
-        double elevAngleRad = Math.toRadians(90.0 - rackAngleDeg);
+        double elevAngleRad = Math.toRadians(90.0 - physicsRackAngleDeg);
         double cosElev = Math.cos(elevAngleRad);
         double denominator = 2.0 * cosElev * cosElev
             * (horizontalDist * Math.tan(elevAngleRad) - dz);
@@ -217,15 +231,34 @@ public class ShooterSubsystem implements Subsystem {
             // Trajectory is physically infeasible at this rack angle — use max speed
             flywheelMotorRPS = Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC;
         } else {
-            double avgDiameter = (Constants.ShooterConstants.FLYWHEEL_LARGE_DIAMETER_METERS
-                + Constants.ShooterConstants.FLYWHEEL_SMALL_DIAMETER_METERS) / 2.0;
+            double avgDiameter = Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS;
             double muzzleVelocity = Math.sqrt(
                 9.80665 * horizontalDist * horizontalDist / denominator);
-            flywheelMotorRPS = muzzleVelocity
+            double baseVelocityRPS = Constants.ShooterConstants.kBaseVelocity
                 / (Math.PI * avgDiameter * Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO);
+            flywheelMotorRPS = muzzleVelocity
+                / (Math.PI * avgDiameter * Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO)
+                - baseVelocityRPS;
             flywheelMotorRPS = Math.min(
                 flywheelMotorRPS, Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC);
         }
+
+        SmartDashboard.putNumber("Shooter/TurretAngleDeg", turretAngleDeg);
+        SmartDashboard.putNumber("Shooter/ShooterX", launchPosition.getX());
+        SmartDashboard.putNumber("Shooter/ShooterY", launchPosition.getY());
+        SmartDashboard.putNumber("Shooter/TargetX", virtualTarget.getX());
+        SmartDashboard.putNumber("Shooter/TargetY", virtualTarget.getY());
+        SmartDashboard.putNumber("Shooter/HorizontalDist", horizontalDist);
+        SmartDashboard.putNumber("Shooter/RackAngleDeg", rackAngleDeg);
+        SmartDashboard.putNumber("Shooter/PhysicsRackAngleDeg", physicsRackAngleDeg);
+        SmartDashboard.putNumber("Shooter/FlywheelMotorRPS", flywheelMotorRPS);
+        SmartDashboard.putNumber("Shooter/MuzzleVelocity",
+            flywheelMotorRPS <= 0 ? 0
+                : (flywheelMotorRPS + Constants.ShooterConstants.kBaseVelocity
+                    / (Math.PI * Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS
+                        * Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO))
+                    * Math.PI * Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS
+                    * Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO);
 
         setTurretRotatorAngle(turretAngleDeg);
         setShooterFlywheelVelocity(flywheelMotorRPS);
@@ -234,27 +267,30 @@ public class ShooterSubsystem implements Subsystem {
 
     /**
      * Converts a turret angle in degrees to motor rotations.
-     * If the angle is within [TURRET_ROTATOR_MIN_ANGLE, TURRET_ROTATOR_MAX_ANGLE] it is used
-     * directly. If outside that range, the limit with the shorter circular (arc) distance to
-     * the requested angle is chosen, so the turret approaches the blind spot from the nearer side.
+     * Unwraps the angle relative to the last commanded position so the turret tracks
+     * smoothly past the ±180° atan2 boundary. When the unwrapped angle exceeds a
+     * physical limit, it wraps 360° to the other side of the range.
      */
-    public static double angleToTurretPosition(double angleDeg) {
+    public double angleToTurretPosition(double angleDeg) {
         final double min = Constants.ShooterConstants.TURRET_ROTATOR_MIN_ANGLE;
         final double max = Constants.ShooterConstants.TURRET_ROTATOR_MAX_ANGLE;
-        if (angleDeg >= min && angleDeg <= max) {
-            return angleDeg / 360.0 / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
-        }
-        // Out of range: go to whichever limit is circularly closer to the requested angle.
-        double distToMin = circularDistance(angleDeg, min);
-        double distToMax = circularDistance(angleDeg, max);
-        double chosen = distToMin <= distToMax ? min : max;
-        return chosen / 360.0 / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
-    }
 
-    /** Returns the shortest arc distance in degrees between two angles. */
-    private static double circularDistance(double a, double b) {
-        double diff = Math.abs(a - b) % 360.0;
-        return Math.min(diff, 360.0 - diff);
+        // Unwrap: find the equivalent angle closest to the last commanded angle
+        double delta = ((angleDeg - m_lastCommandedTurretAngle + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
+        double target = m_lastCommandedTurretAngle + delta;
+
+        // If the unwrapped angle exceeds a limit, swap to the other side
+        if (target > max) {
+            target -= 360.0;
+        } else if (target < min) {
+            target += 360.0;
+        }
+
+        // Safety clamp (shouldn't activate with >360° range)
+        target = Math.max(min, Math.min(max, target));
+
+        m_lastCommandedTurretAngle = target;
+        return target / 360.0 / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
     }
 
     /**
@@ -306,6 +342,60 @@ public class ShooterSubsystem implements Subsystem {
         double clamped = Math.max(-Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
             Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC, velocity));
         m_shooterFlywheelMotor.setControl(new VelocityDutyCycle(clamped));
+    }
+
+    /**
+     * Back-calculates the effective flywheel diameter from a test shot where the
+     * ball landed on the floor at a known horizontal distance from the launch point.
+     *
+     * <p>Procedure:
+     * <ol>
+     *   <li>Park the robot at a fixed, measured position.</li>
+     *   <li>Command a known rack angle and a known motor RPS (use
+     *       {@link #setShooterRackAngle} and {@link #setShooterFlywheelVelocity}).</li>
+     *   <li>Fire the ball and measure the horizontal floor distance from the launch
+     *       point to where it landed.</li>
+     *   <li>Pass those values here along with {@code BALL_LAUNCH_HEIGHT_METERS}.</li>
+     *   <li>Copy the returned value into {@code FLYWHEEL_EFFECTIVE_DIAMETER_METERS}
+     *       and set {@code kBaseVelocity} to {@code 0.0}.</li>
+     * </ol>
+     *
+     * @param rackAngleDeg      rack angle used during the test shot (degrees from vertical)
+     * @param motorRPS          motor RPS commanded during the test shot
+     * @param launchHeightMeters height of the ball at launch above the floor (meters)
+     * @param landingDistMeters measured horizontal distance from launch point to
+     *                          where the ball hit the floor (meters)
+     * @return effective flywheel diameter in meters, or {@code -1} if the inputs are
+     *         physically inconsistent
+     */
+    public static double calculateEffectiveDiameter(
+            double rackAngleDeg,
+            double motorRPS,
+            double launchHeightMeters,
+            double landingDistMeters) {
+        double elevAngleRad = Math.toRadians(90.0 - rackAngleDeg);
+        double cosElev = Math.cos(elevAngleRad);
+        // dz is negative because the ball lands below the launch point
+        double dz = -launchHeightMeters;
+        double denominator = 2.0 * cosElev * cosElev
+            * (landingDistMeters * Math.tan(elevAngleRad) - dz);
+        if (denominator <= 0 || motorRPS <= 0) {
+            return -1;
+        }
+        double actualMuzzleVelocity = Math.sqrt(
+            9.80665 * landingDistMeters * landingDistMeters / denominator);
+        return actualMuzzleVelocity
+            / (Math.PI * Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO * motorRPS);
+    }
+
+    /** Seeds the turret encoder on first enable to account for the 15° rightward offset at boot. */
+    public void zeroTurretEncoderOnce() {
+        if (!m_turretZeroed) {
+            // Turret physically points 15° to the right (−15°) when motor reads 0.
+            m_turretRotatorMotor.setPosition(
+                -0 / 360.0 / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO);
+            m_turretZeroed = true;
+        }
     }
 
     public void stop() {

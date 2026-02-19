@@ -96,6 +96,9 @@ public class RobotContainer {
         joystick.a().onTrue(new ShooterMode(intake, turret, shooter));
         joystick.x().onTrue(new JamMode(intake, turret, shooter));
 
+        // Zero turret encoder on first enable (turret must be facing forward).
+        RobotModeTriggers.disabled().onFalse(shooter.runOnce(() -> shooter.zeroTurretEncoderOnce()));
+
         // Apply disabled behaviour while the robot is disabled
         RobotModeTriggers.disabled().whileTrue(intake.disabledCommand());
         RobotModeTriggers.disabled().whileTrue(turret.disabledCommand());

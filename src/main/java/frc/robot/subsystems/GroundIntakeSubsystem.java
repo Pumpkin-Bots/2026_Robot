@@ -1,5 +1,6 @@
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionVoltage;
@@ -22,6 +23,10 @@ public class GroundIntakeSubsystem implements Subsystem {
         .withKI(Constants.GroundIntakeConstants.PIVOT_KI)
         .withKD(Constants.GroundIntakeConstants.PIVOT_KD);
 
+    private static final CurrentLimitsConfigs rollerCurrentLimits = new CurrentLimitsConfigs()
+        .withSupplyCurrentLimitEnable(true)
+        .withSupplyCurrentLimit(40);
+
     /** Creates a new GroundIntakeSubsystem. */
     public GroundIntakeSubsystem() {
         m_leftPivotMotor = new TalonFX(Constants.GroundIntakeConstants.LEFT_PIVOT_ID);
@@ -29,6 +34,7 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rollerMotor = new TalonFX(Constants.GroundIntakeConstants.ROLLER_ID);
 
         m_leftPivotMotor.getConfigurator().apply(intakeGains);
+        m_rollerMotor.getConfigurator().apply(rollerCurrentLimits);
     }
 
     public void setPivotMotorPosition(double position) {

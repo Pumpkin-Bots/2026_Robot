@@ -8,6 +8,7 @@ import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.math.Matrix;
 import edu.wpi.first.math.VecBuilder;
+import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.geometry.Translation3d;
@@ -22,22 +23,22 @@ public final class Constants {
         public static final int SHOOTER_FLYWHEEL_ID = 27;
 
 
-        public static final double ROTATOR_KP = 12; // optimal is 12, but too violent, need stronger chain.
+        public static final double ROTATOR_KP = 12; // optimal is 12, but too violent, need stronger wiring chain.
         public static final double ROTATOR_KI = 0.0;
         public static final double ROTATOR_KD = 0.35;
 
-        public static final double TURRET_ROTATOR_GEAR_RATIO = -1.0 / 10.0;
-        public static final double TURRET_ROTATOR_MIN_ANGLE = -90; 
-        public static final double TURRET_ROTATOR_MAX_ANGLE = 90; 
-        
+        public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
+        public static final double TURRET_ROTATOR_MIN_ANGLE = -180;
+        public static final double TURRET_ROTATOR_MAX_ANGLE = 270;
+
 
         public static final double RACK_KP = 20;
         public static final double RACK_KI = 0.0;
         public static final double RACK_KD = 0.25;
 
         public static final double RACK_GEAR_RATIO = -1.0 / 333.33;
-        public static final double RACK_MIN_ANGLE = 21; // 15 deg
-        public static final double RACK_MAX_ANGLE = 48; // 45 deg
+        public static final double RACK_MIN_ANGLE = 15; // 15 deg
+        public static final double RACK_MAX_ANGLE = 42; // 45 deg
         // Rack gear ratio is backwards
         // MAX Rotations is at maximum height (lower shot)
         // MIN Rotations is at minimum height (higher shot)
@@ -50,6 +51,27 @@ public final class Constants {
         public static final double FLYWHEEL_LARGE_DIAMETER_METERS = 0.1016; // 4 inches
         public static final double FLYWHEEL_SMALL_DIAMETER_METERS = 0.0508; // 2 inches
         public static final double FLYWHEEL_MAX_REV_PER_SEC = 70.0;
+        // Effective flywheel diameter for muzzle velocity calculations (meters).
+        // Replaces raw average of large/small diameters by capturing real-world effects
+        // (compression energy recovery, contact asymmetry between the two wheel sizes).
+        // When this is calibrated empirically, set kBaseVelocity to 0.0.
+        // Starting value = raw average: (0.1016 + 0.0508) / 2 = 0.0762m (3 inches).
+        // Calibrate using ShooterSubsystem.calculateEffectiveDiameter() from a test shot.
+        public static final double FLYWHEEL_EFFECTIVE_DIAMETER_METERS = 0.0762;
+
+        // Flywheel surface speed subtracted from the physics-computed velocity (m/s).
+        // Accounts for ball elasticity — the ball stores and returns energy on contact,
+        // so the flywheel needs less speed than pure physics predicts to achieve the desired launch.
+        // Set to 0.0 once FLYWHEEL_EFFECTIVE_DIAMETER_METERS has been calibrated empirically.
+        public static final double kBaseVelocity = 0.25; // m/s, tune on robot
+
+        // Rack angle trim offset (degrees) applied only to physics calculations
+        // (flywheel velocity and virtual target compensation). Does NOT move the rack motor.
+        // Positive → physics assume shallower angle → less flywheel speed → shorter shot.
+        // Negative → physics assume steeper angle → more flywheel speed → longer shot.
+        // Tune empirically if the shot is consistently long or short after calibrating
+        // FLYWHEEL_EFFECTIVE_DIAMETER_METERS.
+        public static final double RACK_ANGLE_TRIM_DEG = 15;
 
         // Ball launch position relative to robot center
         // X: forward offset (meters), Z: height above floor (meters)
@@ -57,11 +79,13 @@ public final class Constants {
         public static final double BALL_LAUNCH_FRONT_OFFSET_METERS = -0.2159;
         public static final double BALL_LAUNCH_HEIGHT_METERS = 0.4826;
 
-        // Field-relative 3D position of the shooting target (x, y, z in meters)
-        // Derived from CAD: origin (-325.406, -158.84375, 0) in, target (-158.84375, 0, 56.5) in
-        public static final double TARGET_X_METERS = 3.75; // long axis was 4.2307
-        public static final double TARGET_Y_METERS = 4.5; // short axis was 4.0346
-        public static final double TARGET_Z_METERS = 1.4351; // height
+        // Field-relative 3D position of the shooting target (AprilTag 26)
+        private static final Pose3d TAG_26_POSE = VisionConstants.APRIL_TAG_FIELD_LAYOUT
+            .getTagPose(26)
+            .orElseThrow();
+        public static final double TARGET_X_METERS = TAG_26_POSE.getX() + 0.597;
+        public static final double TARGET_Y_METERS = TAG_26_POSE.getY() + 0;
+        public static final double TARGET_Z_METERS = TAG_26_POSE.getZ() + 0.610;
 
         // Distance thresholds for rack angle interpolation
         // At or below MIN_DISTANCE the rack is at its minimum angle (lowest shot).
@@ -121,18 +145,18 @@ public final class Constants {
          * TODO: Update once final camera placement is confirmed.
          */
         public static final Transform3d ROBOT_TO_BACK_LEFT_CAMERA = new Transform3d(
-            new Translation3d(-0.229, -0.229, 0.340),
+            new Translation3d(-0.229, 0.229, 0.340),
             new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(116.194))
         );
 
         public static final Transform3d ROBOT_TO_FRONT_RIGHT_CAMERA = new Transform3d(
-            new Translation3d(-0.0635, 0.201, 0.340),
+            new Translation3d(-0.0635, -0.201, 0.340),
             new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-63.806))
         );
 
         // TO DO: update location of intake camera
         public static final Transform3d ROBOT_TO_INTAKE_CAMERA = new Transform3d(
-            new Translation3d(0.4, 0.286, 0.39),
+            new Translation3d(0.4, -0.286, 0.39),
             new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(0))
         );
 
