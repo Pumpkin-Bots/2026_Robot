@@ -114,7 +114,8 @@ public final class Constants {
         public static final String BACK_LEFT_CAMERA_NAME  = "Back_Left_Camera";
         public static final String BACK_RIGHT_CAMERA_NAME = "Back_Right_Camera";
         public static final String INTAKE_RIGHT_CAMERA_NAME = "Intake_Right_Camera";
-        
+        public static final String INTAKE_LEFT_CAMERA_NAME  = "Intake_Left_Camera";
+
 
         /**
          * Camera mounting transforms relative to robot center.
@@ -134,6 +135,12 @@ public final class Constants {
         // TO DO: update location of intake camera
         public static final Transform3d ROBOT_TO_INTAKE_RIGHT_CAMERA = new Transform3d(
             new Translation3d(0.4, -0.286, 0.39),
+            new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(0))
+        );
+
+        // TO DO: update location of intake left camera
+        public static final Transform3d ROBOT_TO_INTAKE_LEFT_CAMERA = new Transform3d(
+            new Translation3d(0.4, 0.286, 0.39),
             new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(0))
         );
 

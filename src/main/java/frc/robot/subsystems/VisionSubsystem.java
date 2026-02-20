@@ -42,11 +42,13 @@ public class VisionSubsystem extends SubsystemBase {
     private final PhotonCamera backLeftCamera;
     private final PhotonCamera backRightCamera;
     private final PhotonCamera intakeRightCamera;
+    private final PhotonCamera intakeLeftCamera;
 
     // Pose estimators for each camera (using new 2-argument constructor)
     private final PhotonPoseEstimator backLeftEstimator;
     private final PhotonPoseEstimator backRightEstimator;
     private final PhotonPoseEstimator intakeRightEstimator;
+    private final PhotonPoseEstimator intakeLeftEstimator;
 
     // List of all cameras and estimators for iteration
     private final List<CameraConfig> cameras = new ArrayList<>();
@@ -91,6 +93,12 @@ public class VisionSubsystem extends SubsystemBase {
             VisionConstants.ROBOT_TO_INTAKE_RIGHT_CAMERA
         );
 
+        intakeLeftCamera = new PhotonCamera(VisionConstants.INTAKE_LEFT_CAMERA_NAME);
+        intakeLeftEstimator = new PhotonPoseEstimator(
+            VisionConstants.APRIL_TAG_FIELD_LAYOUT,
+            VisionConstants.ROBOT_TO_INTAKE_LEFT_CAMERA
+        );
+
         // Register cameras for iteration
         cameras.add(new CameraConfig(
             backLeftCamera,
@@ -109,6 +117,12 @@ public class VisionSubsystem extends SubsystemBase {
             intakeRightEstimator,
             VisionConstants.ROBOT_TO_INTAKE_RIGHT_CAMERA,
             VisionConstants.INTAKE_RIGHT_CAMERA_NAME
+        ));
+        cameras.add(new CameraConfig(
+            intakeLeftCamera,
+            intakeLeftEstimator,
+            VisionConstants.ROBOT_TO_INTAKE_LEFT_CAMERA,
+            VisionConstants.INTAKE_LEFT_CAMERA_NAME
         ));
     }
 
@@ -301,6 +315,15 @@ public class VisionSubsystem extends SubsystemBase {
      */
     public boolean isIntakeRightConnected() {
         return intakeRightCamera.isConnected();
+    }
+
+    /**
+     * Checks if the intake left camera is connected.
+     *
+     * @return true if connected, false otherwise
+     */
+    public boolean isIntakeLeftConnected() {
+        return intakeLeftCamera.isConnected();
     }
 
     @Override
