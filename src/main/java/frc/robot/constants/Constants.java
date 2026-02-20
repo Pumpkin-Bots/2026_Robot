@@ -132,16 +132,16 @@ public final class Constants {
             new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-63.806))
         );
 
-        // TO DO: update location of intake camera
+        // TO DO: update location of intake right camera
         public static final Transform3d ROBOT_TO_INTAKE_RIGHT_CAMERA = new Transform3d(
-            new Translation3d(0.4, -0.286, 0.39),
-            new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(0))
+            new Translation3d(0.317, -0.305, 0.381),
+            new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(-45))
         );
 
         // TO DO: update location of intake left camera
         public static final Transform3d ROBOT_TO_INTAKE_LEFT_CAMERA = new Transform3d(
-            new Translation3d(0.4, 0.286, 0.39),
-            new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(0))
+            new Translation3d(0.317, 0.305, 0.381),
+            new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(45))
         );
 
         public static final AprilTagFieldLayout APRIL_TAG_FIELD_LAYOUT =
