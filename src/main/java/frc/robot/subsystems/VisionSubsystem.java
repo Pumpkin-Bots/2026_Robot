@@ -40,13 +40,13 @@ public class VisionSubsystem extends SubsystemBase {
 
     // Camera instances
     private final PhotonCamera backLeftCamera;
-    private final PhotonCamera frontRightCamera;
-    private final PhotonCamera intakeCamera;
+    private final PhotonCamera backRightCamera;
+    private final PhotonCamera intakeRightCamera;
 
     // Pose estimators for each camera (using new 2-argument constructor)
-    private final PhotonPoseEstimator frontLeftEstimator;
-    private final PhotonPoseEstimator frontRightEstimator;
-    private final PhotonPoseEstimator intakeEstimator;
+    private final PhotonPoseEstimator backLeftEstimator;
+    private final PhotonPoseEstimator backRightEstimator;
+    private final PhotonPoseEstimator intakeRightEstimator;
 
     // List of all cameras and estimators for iteration
     private final List<CameraConfig> cameras = new ArrayList<>();
@@ -72,43 +72,43 @@ public class VisionSubsystem extends SubsystemBase {
     public VisionSubsystem() {
         // Initialize cameras
         backLeftCamera = new PhotonCamera(VisionConstants.BACK_LEFT_CAMERA_NAME);
-        frontRightCamera = new PhotonCamera(VisionConstants.FRONT_RIGHT_CAMERA_NAME);
-        intakeCamera = new PhotonCamera(VisionConstants.INTAKE_CAMERA_NAME);
+        backRightCamera = new PhotonCamera(VisionConstants.BACK_RIGHT_CAMERA_NAME);
+        intakeRightCamera = new PhotonCamera(VisionConstants.INTAKE_RIGHT_CAMERA_NAME);
 
         // Initialize pose estimators using new 2-argument constructor (PhotonVision 2026 API)
-        frontLeftEstimator = new PhotonPoseEstimator(
+        backLeftEstimator = new PhotonPoseEstimator(
             VisionConstants.APRIL_TAG_FIELD_LAYOUT,
             VisionConstants.ROBOT_TO_BACK_LEFT_CAMERA
         );
 
-        frontRightEstimator = new PhotonPoseEstimator(
+        backRightEstimator = new PhotonPoseEstimator(
             VisionConstants.APRIL_TAG_FIELD_LAYOUT,
-            VisionConstants.ROBOT_TO_FRONT_RIGHT_CAMERA
+            VisionConstants.ROBOT_TO_BACK_RIGHT_CAMERA
         );
 
-        intakeEstimator = new PhotonPoseEstimator(
+        intakeRightEstimator = new PhotonPoseEstimator(
             VisionConstants.APRIL_TAG_FIELD_LAYOUT,
-            VisionConstants.ROBOT_TO_INTAKE_CAMERA
+            VisionConstants.ROBOT_TO_INTAKE_RIGHT_CAMERA
         );
 
         // Register cameras for iteration
         cameras.add(new CameraConfig(
             backLeftCamera,
-            frontLeftEstimator,
+            backLeftEstimator,
             VisionConstants.ROBOT_TO_BACK_LEFT_CAMERA,
             VisionConstants.BACK_LEFT_CAMERA_NAME
         ));
         cameras.add(new CameraConfig(
-            frontRightCamera,
-            frontRightEstimator,
-            VisionConstants.ROBOT_TO_FRONT_RIGHT_CAMERA,
-            VisionConstants.FRONT_RIGHT_CAMERA_NAME
+            backRightCamera,
+            backRightEstimator,
+            VisionConstants.ROBOT_TO_BACK_RIGHT_CAMERA,
+            VisionConstants.BACK_RIGHT_CAMERA_NAME
         ));
         cameras.add(new CameraConfig(
-            intakeCamera,
-            intakeEstimator,
-            VisionConstants.ROBOT_TO_INTAKE_CAMERA,
-            VisionConstants.INTAKE_CAMERA_NAME
+            intakeRightCamera,
+            intakeRightEstimator,
+            VisionConstants.ROBOT_TO_INTAKE_RIGHT_CAMERA,
+            VisionConstants.INTAKE_RIGHT_CAMERA_NAME
         ));
     }
 
@@ -277,7 +277,7 @@ public class VisionSubsystem extends SubsystemBase {
     }
 
     /**
-     * Checks if the front left camera is connected.
+     * Checks if the back left camera is connected.
      *
      * @return true if connected, false otherwise
      */
@@ -286,21 +286,21 @@ public class VisionSubsystem extends SubsystemBase {
     }
 
     /**
-     * Checks if the front right camera is connected.
+     * Checks if the back right camera is connected.
      *
      * @return true if connected, false otherwise
      */
-    public boolean isFrontRightConnected() {
-        return frontRightCamera.isConnected();
+    public boolean isBackRightConnected() {
+        return backRightCamera.isConnected();
     }
 
    /**
-     * Checks if the intake camera is connected.
+     * Checks if the intake right camera is connected.
      *
      * @return true if connected, false otherwise
      */
-    public boolean isIntakeConnected() {
-        return intakeCamera.isConnected();
+    public boolean isIntakeRightConnected() {
+        return intakeRightCamera.isConnected();
     }
 
     @Override

@@ -112,8 +112,9 @@ public final class Constants {
 
         // Camera names as configured in PhotonVision
         public static final String BACK_LEFT_CAMERA_NAME  = "Back_Left_Camera";
-        public static final String FRONT_RIGHT_CAMERA_NAME = "Front_Right_Camera";
-        public static final String INTAKE_CAMERA_NAME = "Intake_Camera";
+        public static final String BACK_RIGHT_CAMERA_NAME = "Back_Right_Camera";
+        public static final String INTAKE_RIGHT_CAMERA_NAME = "Intake_Right_Camera";
+        
 
         /**
          * Camera mounting transforms relative to robot center.
@@ -125,13 +126,13 @@ public final class Constants {
             new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(116.194))
         );
 
-        public static final Transform3d ROBOT_TO_FRONT_RIGHT_CAMERA = new Transform3d(
+        public static final Transform3d ROBOT_TO_BACK_RIGHT_CAMERA = new Transform3d(
             new Translation3d(-0.0635, -0.201, 0.340),
             new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-63.806))
         );
 
         // TO DO: update location of intake camera
-        public static final Transform3d ROBOT_TO_INTAKE_CAMERA = new Transform3d(
+        public static final Transform3d ROBOT_TO_INTAKE_RIGHT_CAMERA = new Transform3d(
             new Translation3d(0.4, -0.286, 0.39),
             new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(0))
         );
