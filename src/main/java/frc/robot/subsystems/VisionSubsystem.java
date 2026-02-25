@@ -76,6 +76,7 @@ public class VisionSubsystem extends SubsystemBase {
         backLeftCamera = new PhotonCamera(VisionConstants.BACK_LEFT_CAMERA_NAME);
         backRightCamera = new PhotonCamera(VisionConstants.BACK_RIGHT_CAMERA_NAME);
         intakeRightCamera = new PhotonCamera(VisionConstants.INTAKE_RIGHT_CAMERA_NAME);
+        intakeLeftCamera = new PhotonCamera(VisionConstants.INTAKE_LEFT_CAMERA_NAME);
 
         // Initialize pose estimators using new 2-argument constructor (PhotonVision 2026 API)
         backLeftEstimator = new PhotonPoseEstimator(
@@ -93,7 +94,6 @@ public class VisionSubsystem extends SubsystemBase {
             VisionConstants.ROBOT_TO_INTAKE_RIGHT_CAMERA
         );
 
-        intakeLeftCamera = new PhotonCamera(VisionConstants.INTAKE_LEFT_CAMERA_NAME);
         intakeLeftEstimator = new PhotonPoseEstimator(
             VisionConstants.APRIL_TAG_FIELD_LAYOUT,
             VisionConstants.ROBOT_TO_INTAKE_LEFT_CAMERA

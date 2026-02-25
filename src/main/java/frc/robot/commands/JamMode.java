@@ -1,6 +1,8 @@
 package frc.robot.commands;
 
 import edu.wpi.first.math.geometry.Translation3d;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.constants.Constants;
 import frc.robot.subsystems.GroundIntakeSubsystem;
@@ -11,11 +13,6 @@ public class JamMode extends Command {
     private final GroundIntakeSubsystem m_GroundIntake;
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
-
-    private static final Translation3d TARGET_POSITION = new Translation3d(
-        Constants.ShooterConstants.TARGET_X_METERS,
-        Constants.ShooterConstants.TARGET_Y_METERS,
-        Constants.ShooterConstants.TARGET_Z_METERS);
 
     public JamMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
         m_GroundIntake = groundIntake;
@@ -30,7 +27,14 @@ public class JamMode extends Command {
         m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_JAM_SPEED);
         m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
 
-        m_Shooter.calculateShooterActions(TARGET_POSITION);
+        // Select target based on alliance color (defaults to blue if unknown)
+        Translation3d targetPosition = Constants.ShooterConstants.BLUE_TARGET_POSITION;
+        var alliance = DriverStation.getAlliance();
+        if (alliance.isPresent() && alliance.get() == Alliance.Red) {
+            targetPosition = Constants.ShooterConstants.RED_TARGET_POSITION;
+        }
+
+        m_Shooter.calculateShooterActions(targetPosition);
     }
 
     @Override

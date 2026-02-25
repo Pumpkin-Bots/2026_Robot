@@ -28,8 +28,8 @@ public final class Constants {
         public static final double ROTATOR_KD = 0.35;
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
-        public static final double TURRET_ROTATOR_MIN_ANGLE = -135;
-        public static final double TURRET_ROTATOR_MAX_ANGLE = 45;
+        public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
+        public static final double TURRET_ROTATOR_MAX_ANGLE = 320;
 
 
         public static final double RACK_KP = 20;
@@ -70,12 +70,30 @@ public final class Constants {
         public static final double TARGET_Y_METERS = TAG_26_POSE.getY() + 0;
         public static final double TARGET_Z_METERS = TAG_26_POSE.getZ() + 0.610;
 
+        // Field-relative 3D position of the red side shooting target (AprilTag 10)
+        private static final Pose3d TAG_10_POSE = VisionConstants.APRIL_TAG_FIELD_LAYOUT
+            .getTagPose(10)
+            .orElseThrow();
+        public static final double RED_TARGET_X_METERS = TAG_10_POSE.getX() - 0.597;
+        public static final double RED_TARGET_Y_METERS = TAG_10_POSE.getY() + 0;
+        public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.610;
+
+        // Translation3d constants for easy use in commands
+        public static final Translation3d BLUE_TARGET_POSITION = new Translation3d(
+            TARGET_X_METERS,
+            TARGET_Y_METERS,
+            TARGET_Z_METERS);
+        public static final Translation3d RED_TARGET_POSITION = new Translation3d(
+            RED_TARGET_X_METERS,
+            RED_TARGET_Y_METERS,
+            RED_TARGET_Z_METERS);
+
     }
 
     public static final class TurretConstants {
         public static final int TURRET_INDEXER_ID = 24;
 
-        public static final double TURRET_INDEXER_SPEED = 1; // 100%
+        public static final double TURRET_INDEXER_SPEED = 0.33; // 60%
     }
 
     public static final class GroundIntakeConstants {
@@ -96,7 +114,7 @@ public final class Constants {
         //   kD: dampens overshoot — increase if oscillating
         //   kS: static friction feed-forward (~0.1–0.5 V)
         //   kG: gravity feed-forward — add if pivot fights gravity
-        public static final double PIVOT_KP = 1.0;
+        public static final double PIVOT_KP = 1.25;
         public static final double PIVOT_KI = 0.0;
         public static final double PIVOT_KD = 0.1;
 
@@ -123,13 +141,13 @@ public final class Constants {
          * TODO: Update once final camera placement is confirmed.
          */
         public static final Transform3d ROBOT_TO_BACK_LEFT_CAMERA = new Transform3d(
-            new Translation3d(-0.229, 0.229, 0.340),
-            new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(116.194))
+            new Translation3d(-0.2413, 0.2286, 0.36195),
+            new Rotation3d(0.0, Math.toRadians(14.036), Math.toRadians(116.194))
         );
 
         public static final Transform3d ROBOT_TO_BACK_RIGHT_CAMERA = new Transform3d(
-            new Translation3d(-0.0635, -0.201, 0.340),
-            new Rotation3d(0.0, Math.toRadians(15.945), Math.toRadians(-63.806))
+            new Translation3d(-0.2413, -0.2286, 0.36195),
+            new Rotation3d(0.0, Math.toRadians(14.036), Math.toRadians(-116.194))
         );
 
         // TO DO: update location of intake right camera

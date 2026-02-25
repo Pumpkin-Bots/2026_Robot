@@ -11,6 +11,7 @@ import java.util.List;
 import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.swerve.SwerveRequest;
 import com.pathplanner.lib.auto.AutoBuilder;
+import com.pathplanner.lib.auto.NamedCommands;
 
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -55,6 +56,9 @@ public class RobotContainer {
     private final SendableChooser<Command> autoChooser;
 
     public RobotContainer() {
+        // Register named commands for PathPlanner BEFORE configuring AutoBuilder
+        registerNamedCommands();
+
         drivetrain.configurePathPlanner();
 
         // Build auto chooser from all PathPlanner autos
@@ -63,6 +67,17 @@ public class RobotContainer {
 
         configureBindings();
         configureVision();
+    }
+
+    /**
+     * Registers commands with PathPlanner for use in autonomous paths and event markers.
+     * These commands can be referenced by name in PathPlanner GUI.
+     */
+    private void registerNamedCommands() {
+        NamedCommands.registerCommand("HomeMode", new HomeMode(intake, turret, shooter));
+        NamedCommands.registerCommand("TrenchMode", new TrenchMode(intake, turret, shooter));
+        NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter));
+        NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter));
     }
 
     private void configureBindings() {
@@ -150,7 +165,7 @@ public class RobotContainer {
     }
 
     public Command getAutonomousCommand() {
-        // Build an auto from PathPlanner using the "Example Path" path
-        return AutoBuilder.buildAuto("Example Auto");
+        // Return the selected auto from the chooser
+        return autoChooser.getSelected();
     }
 }

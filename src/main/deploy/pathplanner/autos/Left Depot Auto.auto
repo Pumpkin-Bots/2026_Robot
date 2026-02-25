@@ -1,0 +1,55 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "named",
+          "data": {
+            "name": "ShooterMode"
+          }
+        },
+        {
+          "type": "wait",
+          "data": {
+            "waitTime": 3.0
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Left Start To Depot Intake Start"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Depot Intake Path"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Depot Reverse Path"
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "HomeMode"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Depot Intake Start to Left Start"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}
