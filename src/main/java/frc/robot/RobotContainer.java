@@ -80,10 +80,10 @@ public class RobotContainer {
      * These commands can be referenced by name in PathPlanner GUI.
      */
     private void registerNamedCommands() {
-        NamedCommands.registerCommand("HomeMode", new HomeMode(intake, turret, shooter));
-        NamedCommands.registerCommand("TrenchMode", new TrenchMode(intake, turret, shooter));
-        NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter));
-        NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter));
+        NamedCommands.registerCommand("HomeMode", new HomeMode(intake, turret, shooter).withTimeout(2.0)); 
+        NamedCommands.registerCommand("TrenchMode", new TrenchMode(intake, turret, shooter).withTimeout(2.0)); 
+        NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter).withTimeout(2.0));
+        NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter).withTimeout(2.0));
     }
 
     private void configureBindings() {

@@ -133,7 +133,7 @@ public final class Constants {
         public static final double ROLLER_JAM_SPEED = 0.2;
 
         // ---- Position tolerance ----
-        public static final double PIVOT_TOLERANCE_ROTATIONS = 0.75;
+        public static final double PIVOT_TOLERANCE_ROTATIONS = 1.25;
     }
 
     public static final class VisionConstants {

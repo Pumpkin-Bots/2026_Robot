@@ -84,7 +84,7 @@ public class GroundIntakeSubsystem implements Subsystem {
      */
     public boolean isInIntakePosition() {
         double currentPosition = getPivotPosition();
-        double targetPosition = Constants.GroundIntakeConstants.TRENCH_POSITION;
+        double targetPosition = Constants.GroundIntakeConstants.SHOOTER_POSITION;
         double tolerance = Constants.GroundIntakeConstants.PIVOT_TOLERANCE_ROTATIONS;
         return Math.abs(currentPosition - targetPosition) <= tolerance;
     }
