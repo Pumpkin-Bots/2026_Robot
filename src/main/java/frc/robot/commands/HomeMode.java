@@ -40,9 +40,9 @@ public class HomeMode extends Command {
     }
 
     @Override
-    public void end(boolean interrupted) {
-        m_GroundIntake.stop();
-        m_Turret.stop();
-        m_Shooter.stop();
+    public boolean isFinished() {
+        // Finish immediately after setting target states
+        // The subsystem default commands will maintain these states
+        return true;
     }
 }

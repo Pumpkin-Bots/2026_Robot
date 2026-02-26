@@ -66,4 +66,26 @@ public class GroundIntakeSubsystem implements Subsystem {
             setRollerSpeed(0.0);
         });
     }
+
+    /**
+     * Gets the current pivot position in motor rotations.
+     *
+     * @return Current pivot position
+     */
+    public double getPivotPosition() {
+        return m_leftPivotMotor.getPosition().getValueAsDouble();
+    }
+
+    /**
+     * Checks if the intake is near the intake position (TRENCH_POSITION).
+     * Uses the defined tolerance from constants.
+     *
+     * @return true if intake is in intake position, false otherwise
+     */
+    public boolean isInIntakePosition() {
+        double currentPosition = getPivotPosition();
+        double targetPosition = Constants.GroundIntakeConstants.TRENCH_POSITION;
+        double tolerance = Constants.GroundIntakeConstants.PIVOT_TOLERANCE_ROTATIONS;
+        return Math.abs(currentPosition - targetPosition) <= tolerance;
+    }
 }

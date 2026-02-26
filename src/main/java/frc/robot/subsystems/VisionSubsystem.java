@@ -53,6 +53,9 @@ public class VisionSubsystem extends SubsystemBase {
     // List of all cameras and estimators for iteration
     private final List<CameraConfig> cameras = new ArrayList<>();
 
+    // Reference to intake subsystem for conditional camera processing
+    private GroundIntakeSubsystem m_intakeSubsystem;
+
     /**
      * Helper class to bundle a camera with its estimator and transform.
      */
@@ -72,6 +75,19 @@ public class VisionSubsystem extends SubsystemBase {
     }
 
     public VisionSubsystem() {
+        this(null);
+    }
+
+    /**
+     * Creates a new VisionSubsystem with a reference to the intake subsystem.
+     * When an intake subsystem is provided, the intake cameras will only be used
+     * when the intake is in the intake position.
+     *
+     * @param intakeSubsystem The ground intake subsystem (can be null)
+     */
+    public VisionSubsystem(GroundIntakeSubsystem intakeSubsystem) {
+        this.m_intakeSubsystem = intakeSubsystem;
+
         // Initialize cameras
         backLeftCamera = new PhotonCamera(VisionConstants.BACK_LEFT_CAMERA_NAME);
         backRightCamera = new PhotonCamera(VisionConstants.BACK_RIGHT_CAMERA_NAME);
@@ -150,6 +166,13 @@ public class VisionSubsystem extends SubsystemBase {
      * @param estimates List to add valid estimates to
      */
     private void getEstimatesFromCamera(CameraConfig config, List<VisionPoseEstimate> estimates) {
+        // Skip intake cameras if intake subsystem is available and intake is not in position
+        if (m_intakeSubsystem != null && isIntakeCamera(config.name)) {
+            if (!m_intakeSubsystem.isInIntakePosition()) {
+                return; // Skip processing this camera
+            }
+        }
+
         // Use getAllUnreadResults() instead of deprecated getLatestResult()
         List<PhotonPipelineResult> results = config.camera.getAllUnreadResults();
 
@@ -288,6 +311,17 @@ public class VisionSubsystem extends SubsystemBase {
         double distanceScale = 1.0 + (avgDistance * avgDistance / 30.0);
 
         return baseStdDevs.times(distanceScale);
+    }
+
+    /**
+     * Checks if a camera is an intake camera based on its name.
+     *
+     * @param cameraName The name of the camera
+     * @return true if it's an intake camera, false otherwise
+     */
+    private boolean isIntakeCamera(String cameraName) {
+        return cameraName.equals(VisionConstants.INTAKE_RIGHT_CAMERA_NAME) ||
+               cameraName.equals(VisionConstants.INTAKE_LEFT_CAMERA_NAME);
     }
 
     /**

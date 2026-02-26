@@ -17,6 +17,16 @@ import edu.wpi.first.math.numbers.N3;
 
 public final class Constants {
 
+    public static final class DriveConstants {
+        // Normal driving speeds (100% of max)
+        public static final double NORMAL_MAX_SPEED_MULTIPLIER = 1.0;
+        public static final double NORMAL_MAX_ANGULAR_RATE_MULTIPLIER = 1.0;
+
+        // Shooter mode speeds (reduced for precise positioning)
+        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 0.3; // 30% of max speed
+        public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 0.3; // 30% of max rotation speed
+    }
+
     public static final class ShooterConstants{
         public static final int TURRET_ROTATOR_ID = 25;
         public static final int SHOOTER_RACK_ID = 26;
@@ -123,7 +133,7 @@ public final class Constants {
         public static final double ROLLER_JAM_SPEED = 0.2;
 
         // ---- Position tolerance ----
-        public static final double PIVOT_TOLERANCE_ROTATIONS = 0.05;
+        public static final double PIVOT_TOLERANCE_ROTATIONS = 0.75;
     }
 
     public static final class VisionConstants {

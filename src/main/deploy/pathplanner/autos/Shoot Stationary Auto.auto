@@ -5,9 +5,15 @@
     "data": {
       "commands": [
         {
+          "type": "path",
+          "data": {
+            "pathName": "Center Move Back"
+          }
+        },
+        {
           "type": "named",
           "data": {
-            "name": "ShooterMode"
+            "name": "HomeMode"
           }
         }
       ]
