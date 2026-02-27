@@ -25,6 +25,7 @@ import frc.robot.commands.HomeMode;
 import frc.robot.commands.TrenchMode;
 import frc.robot.commands.ShooterMode;
 import frc.robot.commands.JamMode;
+import frc.robot.commands.TestCommand;
 import frc.robot.constants.Constants;
 
 import frc.robot.generated.TunerConstants;
@@ -80,11 +81,11 @@ public class RobotContainer {
      * These commands can be referenced by name in PathPlanner GUI.
      */
     private void registerNamedCommands() {
-        NamedCommands.registerCommand("HomeMode", new HomeMode(intake, turret, shooter).withTimeout(2.0)); 
-        NamedCommands.registerCommand("TrenchMode", new TrenchMode(intake, turret, shooter).withTimeout(2.0)); 
-        NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter).withTimeout(2.0));
-        NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter).withTimeout(2.0));
-        NamedCommands.registerCommand("WaitCommand", Commands.waitSeconds(1.0));
+        NamedCommands.registerCommand("HomeMode", new HomeMode(intake, turret, shooter)); 
+        NamedCommands.registerCommand("TrenchMode", new TrenchMode(intake, turret, shooter)); 
+        NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter));
+        NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter));
+        NamedCommands.registerCommand("TestCommand", new TestCommand(turret));
 
     }
 
@@ -130,7 +131,7 @@ public class RobotContainer {
         );
 
         // Zero turret encoder on first enable (turret must be facing forward).
-        RobotModeTriggers.disabled().onFalse(shooter.runOnce(() -> shooter.zeroTurretEncoderOnce()));
+        RobotModeTriggers.disabled().onFalse(Commands.runOnce(() -> shooter.zeroTurretEncoderOnce()));
 
         // Apply disabled behaviour while the robot is disabled
         RobotModeTriggers.disabled().whileTrue(intake.disabledCommand());

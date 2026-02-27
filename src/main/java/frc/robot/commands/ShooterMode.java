@@ -38,6 +38,10 @@ public class ShooterMode extends Command {
     }
 
     @Override
+    public boolean isFinished() {
+        return false;
+    }
+    @Override
     public void end(boolean interrupted) {
         m_GroundIntake.stop();
         m_Turret.stop();
