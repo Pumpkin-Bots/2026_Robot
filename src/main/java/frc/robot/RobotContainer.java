@@ -84,6 +84,8 @@ public class RobotContainer {
         NamedCommands.registerCommand("TrenchMode", new TrenchMode(intake, turret, shooter).withTimeout(2.0)); 
         NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter).withTimeout(2.0));
         NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter).withTimeout(2.0));
+        NamedCommands.registerCommand("WaitCommand", Commands.waitSeconds(1.0));
+
     }
 
     private void configureBindings() {
