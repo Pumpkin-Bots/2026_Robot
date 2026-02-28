@@ -25,7 +25,7 @@ public class JamMode extends Command {
     public void execute() {
         m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.HOME_POSITION);
         m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_JAM_SPEED);
-        m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
+        m_Turret.setTurretIndexerSpeed(-Constants.TurretConstants.TURRET_INDEXER_SPEED);
 
         // Select target based on alliance color (defaults to blue if unknown)
         Translation3d targetPosition = Constants.ShooterConstants.BLUE_TARGET_POSITION;

@@ -83,7 +83,7 @@ public class ShooterSubsystem implements Subsystem {
         rackAngleTable.put(2.61, 15.0);
         rackAngleTable.put(3.10, 17.16);
         rackAngleTable.put(3.61, 19.32);
-        rackAngleTable.put(4.00, 20.3);
+        rackAngleTable.put(4.00,20.3);
         rackAngleTable.put(4.26, 21.49);
         rackAngleTable.put(4.57, 25.81);
         rackAngleTable.put(5.45, 29.81);
