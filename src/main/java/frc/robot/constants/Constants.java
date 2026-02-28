@@ -88,6 +88,15 @@ public final class Constants {
         public static final double RED_TARGET_Y_METERS = TAG_10_POSE.getY() + 0;
         public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.610;
 
+
+        public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() + 0;
+        public static final double BLUE_SHUTTLE_TARGET_Y_METERS = TAG_26_POSE.getY() + 2;
+        public static final double BLUE_SHUTTLE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0;
+
+        public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 0;
+        public static final double RED_SHUTTLE_TARGET_Y_METERS = TAG_10_POSE.getY() + 2;
+        public static final double RED_SHUTTLE_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0;
+
         // Translation3d constants for easy use in commands
         public static final Translation3d BLUE_TARGET_POSITION = new Translation3d(
             BLUE_TARGET_X_METERS,
@@ -97,6 +106,14 @@ public final class Constants {
             RED_TARGET_X_METERS,
             RED_TARGET_Y_METERS,
             RED_TARGET_Z_METERS);
+        public static final Translation3d BLUE_SHUTTLE_TARGET_POSITION = new Translation3d(
+            BLUE_SHUTTLE_TARGET_X_METERS,
+            BLUE_SHUTTLE_TARGET_Y_METERS,
+            BLUE_SHUTTLE_TARGET_Z_METERS);
+        public static final Translation3d RED_SHUTTLE_TARGET_POSITION = new Translation3d(
+            RED_SHUTTLE_TARGET_X_METERS,
+            RED_SHUTTLE_TARGET_Y_METERS,
+            RED_SHUTTLE_TARGET_Z_METERS);
 
     }
 

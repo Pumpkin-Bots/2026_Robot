@@ -25,6 +25,7 @@ import frc.robot.commands.HomeMode;
 import frc.robot.commands.TrenchMode;
 import frc.robot.commands.ShooterMode;
 import frc.robot.commands.JamMode;
+import frc.robot.commands.ShuttleMode;
 import frc.robot.commands.TestCommand;
 import frc.robot.constants.Constants;
 
@@ -128,6 +129,9 @@ public class RobotContainer {
         );
         joystick.x().onTrue(
             new JamMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setNormalSpeeds))
+        );
+        joystick.rightBumper().onTrue(
+            new ShuttleMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setShooterModeSpeeds))
         );
 
         // Zero turret encoder on first enable (turret must be facing forward).
