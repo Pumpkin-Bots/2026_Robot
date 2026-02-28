@@ -98,7 +98,8 @@ public class ShooterSubsystem implements Subsystem {
         flywheelRPSTable.put(4.00, 42.0);
         flywheelRPSTable.put(4.26, 42.0);
         flywheelRPSTable.put(4.57, 43.0);
-        flywheelRPSTable.put(5.45, 43.0);
+        flywheelRPSTable.put(5.45, 43.5);
+        flywheelRPSTable.put(6.00, 44.0);
 
     }
 

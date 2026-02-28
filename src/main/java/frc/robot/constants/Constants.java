@@ -57,7 +57,7 @@ public final class Constants {
         public static final double FLYWHEEL_KI = 0.125;
         public static final double FLYWHEEL_KD = 0;
 
-        public static final double FLYWHEEL_GEAR_RATIO = 24.0 / 36.0;
+        public static final double FLYWHEEL_GEAR_RATIO = 1;
         public static final double FLYWHEEL_LARGE_DIAMETER_METERS = 0.1016; // 4 inches
         public static final double FLYWHEEL_SMALL_DIAMETER_METERS = 0.0508; // 2 inches
         public static final double FLYWHEEL_MAX_REV_PER_SEC = 70.0;
