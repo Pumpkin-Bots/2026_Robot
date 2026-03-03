@@ -72,6 +72,17 @@ public final class Constants {
         public static final double BALL_LAUNCH_FRONT_OFFSET_METERS = -0.2159;
         public static final double BALL_LAUNCH_HEIGHT_METERS = 0.4826;
 
+        // Scales the motion compensation delta applied to the aim target (x and y).
+        // 1.0 = full compensation. Tune to correct for unmodeled effects such as
+        // aerodynamic drift, turret tracking lag, or shot timing delay.
+        // If shots consistently miss in the direction of travel, increase above 1.0.
+        // If shots consistently overcorrect against travel direction, decrease below 1.0.
+        // 1.0 — full physics-based compensation (default)
+        // 0.5 — half the correction applied (useful if shots are overcorrecting)
+        // 1.2 — 20% extra compensation (useful if shots still miss in direction of travel, e.g. due to turret lag causing the ball to fire slightly late)
+
+        public static final double MOTION_COMPENSATION_GAIN = 1.0;
+
         // Field-relative 3D position of the shooting target (AprilTag 26)
         private static final Pose3d TAG_26_POSE = VisionConstants.APRIL_TAG_FIELD_LAYOUT
             .getTagPose(26)

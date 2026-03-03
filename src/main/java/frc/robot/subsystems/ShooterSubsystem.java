@@ -72,6 +72,8 @@ public class ShooterSubsystem implements Subsystem {
         .withSupplyCurrentLimitEnable(true)
         .withSupplyCurrentLimit(40);
 
+    private static final double GRAVITY = 9.80665; // m/s²
+
     // Lookup tables: distance (meters) → value. Populate with empirical test shots.
     private static final InterpolatingDoubleTreeMap rackAngleTable = new InterpolatingDoubleTreeMap();
     private static final InterpolatingDoubleTreeMap flywheelRPSTable = new InterpolatingDoubleTreeMap();
@@ -127,54 +129,16 @@ public class ShooterSubsystem implements Subsystem {
     }
 
     /**
-     * Computes a virtual target position that compensates for robot motion during
-     * projectile flight time. Uses iterative refinement with the known muzzle
-     * velocity from the lookup table.
-     *
-     * @param targetPosition      field-relative 3D position of the actual target
-     * @param launchPosition      field-relative 3D position of the ball at launch
-     * @param fieldRelativeSpeeds robot velocity in field-relative coordinates
-     * @param rackAngleDeg        elevation angle in degrees
-     * @param muzzleSpeed         muzzle speed in m/s (from table flywheel RPS)
-     * @return adjusted 3D aim point that accounts for robot drift during flight
-     */
-    private Translation3d calculateVirtualTargetPosition(
-            Translation3d targetPosition,
-            Translation3d launchPosition,
-            ChassisSpeeds fieldRelativeSpeeds,
-            double rackAngleDeg,
-            double muzzleSpeed) {
-        double elevAngleRad = Math.toRadians(90.0 - rackAngleDeg);
-        double horizontalSpeed = muzzleSpeed * Math.cos(elevAngleRad);
-
-        Translation3d virtualTarget = targetPosition;
-        for (int i = 0; i < 5; i++) {
-            double dx = virtualTarget.getX() - launchPosition.getX();
-            double dy = virtualTarget.getY() - launchPosition.getY();
-            double horizontalDist = Math.hypot(dx, dy);
-            double flightTime = horizontalDist / horizontalSpeed;
-
-            virtualTarget = new Translation3d(
-                targetPosition.getX() - fieldRelativeSpeeds.vxMetersPerSecond * flightTime,
-                targetPosition.getY() - fieldRelativeSpeeds.vyMetersPerSecond * flightTime,
-                targetPosition.getZ());
-        }
-        return virtualTarget;
-    }
-
-    /**
-     * Returns the horizontal distance from the launch position to a field target.
-     */
-    private double getDistanceToTarget(Translation3d targetPosition, Translation3d launchPosition) {
-        return Math.hypot(
-            targetPosition.getX() - launchPosition.getX(),
-            targetPosition.getY() - launchPosition.getY());
-    }
-
-    /**
      * Computes and applies the turret rotation, rack angle, and flywheel velocity
-     * needed to hit a 3D field target, using empirical lookup tables and
-     * compensating for robot motion during flight.
+     * needed to hit a 3D field target, compensating for robot motion and gravity.
+     *
+     * Flight time is derived from the vertical projectile equation using the known
+     * height difference, which guarantees the ball is descending when it hits the
+     * target (larger root of the quadratic). Table lookups are re-queried each
+     * iteration using the virtual target distance — the distance the ball travels
+     * in the muzzle direction — so rack angle and flywheel speed stay consistent
+     * with the actual compensated shot. Converges in 3 passes since robot speed
+     * is much smaller than ball speed.
      *
      * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
      */
@@ -184,32 +148,64 @@ public class ShooterSubsystem implements Subsystem {
             m_drivetrain.getState().Speeds, robotPose.getRotation());
         Translation3d launchPosition = calculateLaunchPosition(robotPose);
 
-        double distance = getDistanceToTarget(targetPosition, launchPosition);
-        double rackAngleDeg = rackAngleTable.get(distance);
-        double flywheelMotorRPS = flywheelRPSTable.get(distance);
+        double dx = targetPosition.getX() - launchPosition.getX();
+        double dy = targetPosition.getY() - launchPosition.getY();
+        double dz = targetPosition.getZ() - launchPosition.getZ();
+        double vx = fieldRelativeSpeeds.vxMetersPerSecond;
+        double vy = fieldRelativeSpeeds.vyMetersPerSecond;
 
-        // Convert table flywheel RPS to muzzle speed for motion compensation
-        double muzzleSpeed = flywheelMotorRPS
-            * Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO
-            * Math.PI * Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS;
+        // Start with real horizontal distance; refine toward virtual target distance.
+        double lookupDist = Math.hypot(dx, dy);
+        double rackAngleDeg = 0;
+        double flywheelMotorRPS = 0;
+        double flightTime = 0;
+        double aimX = 0;
+        double aimY = 0;
 
-        Translation3d virtualTarget = calculateVirtualTargetPosition(
-            targetPosition, launchPosition, fieldRelativeSpeeds, rackAngleDeg, muzzleSpeed);
+        for (int i = 0; i < 3; i++) {
+            rackAngleDeg     = rackAngleTable.get(lookupDist);
+            flywheelMotorRPS = flywheelRPSTable.get(lookupDist);
 
-        // Turret: field-relative angle to virtual target, converted to robot-relative
-        double dx = virtualTarget.getX() - launchPosition.getX();
-        double dy = virtualTarget.getY() - launchPosition.getY();
-        double turretAngleDeg = Math.toDegrees(Math.atan2(dy, dx))
+            double muzzleSpeed = flywheelMotorRPS
+                * Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO
+                * Math.PI * Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS;
+            double sv = muzzleSpeed * Math.sin(Math.toRadians(rackAngleDeg));
+
+            // Vertical projectile equation: dz = sv·t - ½g·t²
+            // Rearranged: (g/2)t² - sv·t + dz = 0
+            // t = (sv ± √(sv² - 2g·dz)) / g
+            // Larger root → ball is descending when it reaches the target.
+            double discriminant = sv * sv - 2.0 * GRAVITY * dz;
+            if (discriminant < 0) {
+                // Rack angle too shallow to reach target height at this distance.
+                SmartDashboard.putBoolean("Shooter/CanReachTarget", false);
+                return;
+            }
+            flightTime = (sv + Math.sqrt(discriminant)) / GRAVITY;
+
+            // Required muzzle velocity in the field frame to reach the real goal in flightTime.
+            // Gain scales the velocity offset to compensate for unmodeled effects.
+            double gain = Constants.ShooterConstants.MOTION_COMPENSATION_GAIN;
+            aimX = dx / flightTime - vx * gain;
+            aimY = dy / flightTime - vy * gain;
+
+            // Virtual target distance: how far the ball travels in the muzzle direction.
+            // When robot is stationary this equals the real horizontal distance exactly.
+            lookupDist = Math.hypot(aimX, aimY) * flightTime;
+        }
+
+        double turretAngleDeg = Math.toDegrees(Math.atan2(aimY, aimX))
             - robotPose.getRotation().getDegrees();
-        double horizontalDist = Math.hypot(dx, dy);
 
+        SmartDashboard.putBoolean("Shooter/CanReachTarget", true);
         SmartDashboard.putNumber("Shooter/TurretAngleDeg", turretAngleDeg);
         SmartDashboard.putNumber("Shooter/ShooterX", launchPosition.getX());
         SmartDashboard.putNumber("Shooter/ShooterY", launchPosition.getY());
-        SmartDashboard.putNumber("Shooter/TargetX", virtualTarget.getX());
-        SmartDashboard.putNumber("Shooter/TargetY", virtualTarget.getY());
-        SmartDashboard.putNumber("Shooter/HorizontalDist", horizontalDist);
-        SmartDashboard.putNumber("Shooter/Distance", distance);
+        SmartDashboard.putNumber("Shooter/TargetX", targetPosition.getX());
+        SmartDashboard.putNumber("Shooter/TargetY", targetPosition.getY());
+        SmartDashboard.putNumber("Shooter/HorizontalDist", Math.hypot(dx, dy));
+        SmartDashboard.putNumber("Shooter/LookupDist", lookupDist);
+        SmartDashboard.putNumber("Shooter/FlightTime", flightTime);
         SmartDashboard.putNumber("Shooter/RackAngleDeg", rackAngleDeg);
         SmartDashboard.putNumber("Shooter/FlywheelMotorRPS", flywheelMotorRPS);
 
