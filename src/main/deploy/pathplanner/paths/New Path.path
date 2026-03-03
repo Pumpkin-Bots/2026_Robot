@@ -1,0 +1,59 @@
+{
+  "version": "2025.0",
+  "waypoints": [
+    {
+      "anchor": {
+        "x": 5.65091011235955,
+        "y": 5.645179775280899
+      },
+      "prevControl": null,
+      "nextControl": {
+        "x": 8.16375761752873,
+        "y": 5.444223500937665
+      },
+      "isLocked": false,
+      "linkedName": "Left Bump Sweep End"
+    },
+    {
+      "anchor": {
+        "x": 5.630528089887639,
+        "y": 2.598067415730337
+      },
+      "prevControl": {
+        "x": 8.40834188719165,
+        "y": 3.1279999999999992
+      },
+      "nextControl": null,
+      "isLocked": false,
+      "linkedName": "Right Trench Sweep"
+    }
+  ],
+  "rotationTargets": [
+    {
+      "waypointRelativePos": 0.5,
+      "rotationDegrees": 59.99999999999999
+    }
+  ],
+  "constraintZones": [],
+  "pointTowardsZones": [],
+  "eventMarkers": [],
+  "globalConstraints": {
+    "maxVelocity": 3.0,
+    "maxAcceleration": 3.0,
+    "maxAngularVelocity": 540.0,
+    "maxAngularAcceleration": 720.0,
+    "nominalVoltage": 12.0,
+    "unlimited": false
+  },
+  "goalEndState": {
+    "velocity": 0,
+    "rotation": 0.0
+  },
+  "reversed": false,
+  "folder": null,
+  "idealStartingState": {
+    "velocity": 0,
+    "rotation": -0.7905577070526657
+  },
+  "useDefaultConstraints": true
+}

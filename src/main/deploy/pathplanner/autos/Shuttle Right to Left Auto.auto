@@ -1,0 +1,56 @@
+{
+  "version": "2025.0",
+  "command": {
+    "type": "sequential",
+    "data": {
+      "commands": [
+        {
+          "type": "race",
+          "data": {
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Right Start to Center Field Push Balls"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "TrenchMode"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Center Field Push Balls into Trench"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Left Trench Sweep End to Left Bump Sweep End"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "New Path"
+          }
+        },
+        {
+          "type": "path",
+          "data": {
+            "pathName": "Right Trench Sweep to start"
+          }
+        }
+      ]
+    }
+  },
+  "resetOdom": true,
+  "folder": null,
+  "choreoAuto": false
+}

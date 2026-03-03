@@ -90,11 +90,11 @@ public final class Constants {
 
 
         public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() + 0;
-        public static final double BLUE_SHUTTLE_TARGET_Y_METERS = TAG_26_POSE.getY() + 2;
+        public static final double BLUE_SHUTTLE_TARGET_Y_METERS = TAG_26_POSE.getY();
         public static final double BLUE_SHUTTLE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0;
 
         public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 0;
-        public static final double RED_SHUTTLE_TARGET_Y_METERS = TAG_10_POSE.getY() + 2;
+        public static final double RED_SHUTTLE_TARGET_Y_METERS = TAG_10_POSE.getY();
         public static final double RED_SHUTTLE_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0;
 
         // Translation3d constants for easy use in commands
@@ -132,7 +132,7 @@ public final class Constants {
 
         // ---- Pivot target positions (motor rotations) ----
         // NOTE: These are rotor rotations. Multiply by gear ratio if needed.
-        public static final double HOME_POSITION    =  0.0;
+        public static final double DEFENSE_POSITION    =  0.0;
         public static final double TRENCH_POSITION  = -2.0;
         public static final double SHOOTER_POSITION = -4.7;
 
@@ -141,7 +141,7 @@ public final class Constants {
         //   kD: dampens overshoot — increase if oscillating
         //   kS: static friction feed-forward (~0.1–0.5 V)
         //   kG: gravity feed-forward — add if pivot fights gravity
-        public static final double PIVOT_KP = 1.25;
+        public static final double PIVOT_KP = 1.50;
         public static final double PIVOT_KI = 0.0;
         public static final double PIVOT_KD = 0.1;
 
