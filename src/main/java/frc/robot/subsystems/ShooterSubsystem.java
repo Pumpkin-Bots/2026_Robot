@@ -89,17 +89,17 @@ public class ShooterSubsystem implements Subsystem {
         rackAngleTable.put(5.45, 29.81);
 
         // TODO: Fill in from test shots — put(distance_meters, flywheel_motor_RPS)
-        flywheelRPSTable.put(1.4478, 32.0);
-        flywheelRPSTable.put(1.778, 35.0);
-        flywheelRPSTable.put(2.13, 37.0);
-        flywheelRPSTable.put(2.61, 40.0);
-        flywheelRPSTable.put(3.10, 40.0);
-        flywheelRPSTable.put(3.61, 41.0);
-        flywheelRPSTable.put(4.00, 42.0);
-        flywheelRPSTable.put(4.26, 42.0);
-        flywheelRPSTable.put(4.57, 43.0);
-        flywheelRPSTable.put(5.45, 43.5);
-        flywheelRPSTable.put(6.00, 44.0);
+        flywheelRPSTable.put(1.4478, 25.0);
+        flywheelRPSTable.put(1.778, 26.0);
+        flywheelRPSTable.put(2.13, 27.0);
+        flywheelRPSTable.put(2.61, 28.0);
+        flywheelRPSTable.put(3.10, 29.0);
+        flywheelRPSTable.put(3.61, 30.0);
+        flywheelRPSTable.put(4.00, 28.0);
+        flywheelRPSTable.put(4.26, 28.0);
+        flywheelRPSTable.put(4.57, 28.67);
+        flywheelRPSTable.put(5.45, 29.0);
+        flywheelRPSTable.put(6.00, 29.33);
 
     }
 
