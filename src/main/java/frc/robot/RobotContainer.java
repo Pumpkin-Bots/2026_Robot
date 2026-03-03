@@ -21,7 +21,7 @@ import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
-import frc.robot.commands.HomeMode;
+import frc.robot.commands.DefenseMode;
 import frc.robot.commands.TrenchMode;
 import frc.robot.commands.ShooterMode;
 import frc.robot.commands.JamMode;
@@ -82,7 +82,6 @@ public class RobotContainer {
      * These commands can be referenced by name in PathPlanner GUI.
      */
     private void registerNamedCommands() {
-        NamedCommands.registerCommand("HomeMode", new HomeMode(intake, turret, shooter)); 
         NamedCommands.registerCommand("TrenchMode", new TrenchMode(intake, turret, shooter)); 
         NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter));
         NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter));
@@ -118,8 +117,8 @@ public class RobotContainer {
         // Y → home position (pivot to 0 rot / vertical, rollers off, normal drive speed)
         // X → jam mode      (pivot at current position, rollers reverse, normal drive speed)
 
-        joystick.y().onTrue(
-            new HomeMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setNormalSpeeds))
+        joystick.rightBumper().onTrue(
+            new DefenseMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setNormalSpeeds))
         );
         joystick.b().onTrue(
             new TrenchMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setNormalSpeeds))
@@ -130,8 +129,8 @@ public class RobotContainer {
         joystick.x().onTrue(
             new JamMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setNormalSpeeds))
         );
-        joystick.rightBumper().onTrue(
-            new ShuttleMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setShooterModeSpeeds))
+        joystick.y().onTrue(
+            new ShuttleMode(intake, turret, shooter, drivetrain).alongWith(Commands.runOnce(this::setShooterModeSpeeds))
         );
 
         // Zero turret encoder on first enable (turret must be facing forward).

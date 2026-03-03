@@ -9,12 +9,12 @@ import frc.robot.subsystems.GroundIntakeSubsystem;
 import frc.robot.subsystems.TurretSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
 
-public class HomeMode extends Command {
+public class DefenseMode extends Command {
     private final GroundIntakeSubsystem m_GroundIntake;
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
 
-    public HomeMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
+    public DefenseMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
         m_GroundIntake = groundIntake;
         m_Turret = turret;
         m_Shooter = shooter;
@@ -23,7 +23,7 @@ public class HomeMode extends Command {
 
     @Override
     public void execute() {
-        m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.HOME_POSITION);
+        m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.DEFENSE_POSITION);
         m_GroundIntake.setRollerSpeed(0);
         m_Turret.setTurretIndexerSpeed(0);
 

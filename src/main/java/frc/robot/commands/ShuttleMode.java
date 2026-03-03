@@ -5,6 +5,7 @@ import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.constants.Constants;
+import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.GroundIntakeSubsystem;
 import frc.robot.subsystems.TurretSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
@@ -13,11 +14,13 @@ public class ShuttleMode extends Command {
     private final GroundIntakeSubsystem m_GroundIntake;
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
+    private final CommandSwerveDrivetrain m_Drivetrain;
 
-    public ShuttleMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
+    public ShuttleMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter, CommandSwerveDrivetrain drivetrain) {
         m_GroundIntake = groundIntake;
         m_Turret = turret;
         m_Shooter = shooter;
+        m_Drivetrain = drivetrain;
         addRequirements(m_GroundIntake, m_Turret, m_Shooter);
     }
 
@@ -28,12 +31,25 @@ public class ShuttleMode extends Command {
         m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
 
         // Select target based on alliance color (defaults to blue if unknown)
-        Translation3d targetPosition = Constants.ShooterConstants.BLUE_SHUTTLE_TARGET_POSITION;
+        double tagY;
+        double targetX;
+        double targetZ;
         var alliance = DriverStation.getAlliance();
         if (alliance.isPresent() && alliance.get() == Alliance.Red) {
-            targetPosition = Constants.ShooterConstants.RED_SHUTTLE_TARGET_POSITION;
+            tagY = Constants.ShooterConstants.RED_SHUTTLE_TARGET_Y_METERS;
+            targetX = Constants.ShooterConstants.RED_SHUTTLE_TARGET_X_METERS;
+            targetZ = Constants.ShooterConstants.RED_SHUTTLE_TARGET_Z_METERS;
+        } else {
+            tagY = Constants.ShooterConstants.BLUE_SHUTTLE_TARGET_Y_METERS;
+            targetX = Constants.ShooterConstants.BLUE_SHUTTLE_TARGET_X_METERS;
+            targetZ = Constants.ShooterConstants.BLUE_SHUTTLE_TARGET_Z_METERS;
         }
 
+        // Offset Y by +2 or -2 based on robot position relative to the tag
+        double robotY = m_Drivetrain.getState().Pose.getY();
+        double targetY = (robotY > tagY) ? tagY + 2.0 : tagY - 2.0;
+
+        Translation3d targetPosition = new Translation3d(targetX, targetY, targetZ);
         m_Shooter.calculateShooterActions(targetPosition);
     }
 

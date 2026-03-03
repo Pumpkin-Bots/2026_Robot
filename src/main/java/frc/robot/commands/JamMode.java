@@ -23,7 +23,7 @@ public class JamMode extends Command {
 
     @Override
     public void execute() {
-        m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.HOME_POSITION);
+        m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
         m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_JAM_SPEED);
         m_Turret.setTurretIndexerSpeed(-Constants.TurretConstants.TURRET_INDEXER_SPEED);
 

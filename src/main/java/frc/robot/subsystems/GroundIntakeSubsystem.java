@@ -62,7 +62,7 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     public Command maintainStateCommand() {
         return run(() -> {
-            setPivotMotorPosition(Constants.GroundIntakeConstants.HOME_POSITION);
+            setPivotMotorPosition(Constants.GroundIntakeConstants.DEFENSE_POSITION);
             setRollerSpeed(0.0);
         });
     }
