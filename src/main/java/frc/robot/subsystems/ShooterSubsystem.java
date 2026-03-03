@@ -77,29 +77,25 @@ public class ShooterSubsystem implements Subsystem {
     private static final InterpolatingDoubleTreeMap flywheelRPSTable = new InterpolatingDoubleTreeMap();
     static {
         // TODO: Fill in from test shots — put(distance_meters, rack_angle_deg)
-        rackAngleTable.put(1.4478, 15.0);
-        rackAngleTable.put(1.778, 15.0);
-        rackAngleTable.put(2.13, 15.0);
-        rackAngleTable.put(2.61, 15.0);
-        rackAngleTable.put(3.10, 17.16);
-        rackAngleTable.put(3.61, 19.32);
-        rackAngleTable.put(4.00,20.3);
-        rackAngleTable.put(4.26, 21.49);
-        rackAngleTable.put(4.57, 25.81);
-        rackAngleTable.put(5.45, 29.81);
+        rackAngleTable.put(1.3589, 15.0);
+        rackAngleTable.put(1.7018, 15.0);
+        rackAngleTable.put(2.3495, 17.0);
+        rackAngleTable.put(3.0099, 19.0);
+        rackAngleTable.put(3.7211, 23.0);
+        rackAngleTable.put(4.0767, 27.0);
+        rackAngleTable.put(5.9182, 35.0);
+        rackAngleTable.put(5.9182, 37.0);
+
 
         // TODO: Fill in from test shots — put(distance_meters, flywheel_motor_RPS)
-        flywheelRPSTable.put(1.4478, 25.0);
-        flywheelRPSTable.put(1.778, 26.0);
-        flywheelRPSTable.put(2.13, 27.0);
-        flywheelRPSTable.put(2.61, 28.0);
-        flywheelRPSTable.put(3.10, 29.0);
-        flywheelRPSTable.put(3.61, 30.0);
-        flywheelRPSTable.put(4.00, 28.0);
-        flywheelRPSTable.put(4.26, 28.0);
-        flywheelRPSTable.put(4.57, 28.67);
-        flywheelRPSTable.put(5.45, 29.0);
-        flywheelRPSTable.put(6.00, 29.33);
+        flywheelRPSTable.put(1.3589, 27.0);
+        flywheelRPSTable.put(1.7018, 28.0);
+        flywheelRPSTable.put(2.3495, 30.0);
+        flywheelRPSTable.put(3.0099, 32.5);
+        flywheelRPSTable.put(3.7211, 33.5);
+        flywheelRPSTable.put(4.0767, 34.5);
+        flywheelRPSTable.put(5.9182, 40.5);
+        flywheelRPSTable.put(6.2484, 42.0);
 
     }
 

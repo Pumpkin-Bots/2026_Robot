@@ -44,6 +44,7 @@ public class ShooterMode extends Command {
 
         if (m_timer.hasElapsed(0.75)) {
             m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
+            m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
         }
     }
 
