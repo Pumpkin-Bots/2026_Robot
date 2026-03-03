@@ -23,8 +23,8 @@ public final class Constants {
         public static final double NORMAL_MAX_ANGULAR_RATE_MULTIPLIER = 1.0;
 
         // Shooter mode speeds (reduced for precise positioning)
-        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 0.3; // 30% of max speed
-        public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 0.3; // 30% of max rotation speed
+        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 0.5; // 50% of max speed
+        public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 0.5; // 50% of max rotation speed
     }
 
     public static final class ShooterConstants{
@@ -120,7 +120,7 @@ public final class Constants {
     public static final class TurretConstants {
         public static final int TURRET_INDEXER_ID = 24;
 
-        public static final double TURRET_INDEXER_SPEED = 0.33; // 60%
+        public static final double TURRET_INDEXER_SPEED = .45; // 60%
     }
 
     public static final class GroundIntakeConstants {
@@ -146,7 +146,7 @@ public final class Constants {
         public static final double PIVOT_KD = 0.1;
 
         // ---- Roller speed ----
-        public static final double ROLLER_INTAKE_SPEED = -0.95; // 60% duty cycle
+        public static final double ROLLER_INTAKE_SPEED = -1.00; // 60% duty cycle
         public static final double ROLLER_JAM_SPEED = 0.2;
 
         // ---- Position tolerance ----

@@ -3,6 +3,7 @@ package frc.robot.commands;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.constants.Constants;
 import frc.robot.subsystems.GroundIntakeSubsystem;
@@ -13,6 +14,7 @@ public class ShooterMode extends Command {
     private final GroundIntakeSubsystem m_GroundIntake;
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
+    private final Timer m_timer = new Timer();
 
     public ShooterMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
         m_GroundIntake = groundIntake;
@@ -22,10 +24,14 @@ public class ShooterMode extends Command {
     }
 
     @Override
+    public void initialize() {
+        m_timer.restart();
+    }
+
+    @Override
     public void execute() {
-        m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
-        m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
         m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
+        m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
 
         // Select target based on alliance color (defaults to blue if unknown)
         Translation3d targetPosition = Constants.ShooterConstants.BLUE_TARGET_POSITION;
@@ -35,6 +41,10 @@ public class ShooterMode extends Command {
         }
 
         m_Shooter.calculateShooterActions(targetPosition);
+
+        if (m_timer.hasElapsed(0.75)) {
+            m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
+        }
     }
 
     @Override
