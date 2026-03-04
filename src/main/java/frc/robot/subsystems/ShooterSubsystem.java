@@ -182,7 +182,15 @@ public class ShooterSubsystem implements Subsystem {
         Pose2d robotPose = m_drivetrain.getState().Pose;
         ChassisSpeeds fieldRelativeSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
             m_drivetrain.getState().Speeds, robotPose.getRotation());
-        Translation3d launchPosition = calculateLaunchPosition(robotPose);
+
+        // Predict where the robot will be when the ball actually exits.
+        // This corrects for flywheel spin-up, rack settling, indexing, and loop latency.
+        double dt = Constants.ShooterConstants.LAUNCH_LATENCY_SECONDS;
+        Pose2d predictedPose = new Pose2d(
+            robotPose.getX() + fieldRelativeSpeeds.vxMetersPerSecond * dt,
+            robotPose.getY() + fieldRelativeSpeeds.vyMetersPerSecond * dt,
+            robotPose.getRotation());
+        Translation3d launchPosition = calculateLaunchPosition(predictedPose);
 
         double distance = getDistanceToTarget(targetPosition, launchPosition);
         double rackAngleDeg = rackAngleTable.get(distance);
@@ -203,6 +211,7 @@ public class ShooterSubsystem implements Subsystem {
             - robotPose.getRotation().getDegrees();
         double horizontalDist = Math.hypot(dx, dy);
 
+        SmartDashboard.putNumber("Shooter/LaunchLatencySeconds", dt);
         SmartDashboard.putNumber("Shooter/TurretAngleDeg", turretAngleDeg);
         SmartDashboard.putNumber("Shooter/ShooterX", launchPosition.getX());
         SmartDashboard.putNumber("Shooter/ShooterY", launchPosition.getY());

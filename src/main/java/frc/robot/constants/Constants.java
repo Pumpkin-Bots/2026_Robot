@@ -72,6 +72,12 @@ public final class Constants {
         public static final double BALL_LAUNCH_FRONT_OFFSET_METERS = -0.2159;
         public static final double BALL_LAUNCH_HEIGHT_METERS = 0.4826;
 
+        // Estimated total delay (seconds) from calculateShooterActions() to ball exit.
+        // Accounts for flywheel spin-up, rack settling, ball indexing, and loop latency.
+        // Tune by shooting at constant velocity: increase until moving shots match standstill accuracy.
+        // Start at 0.0 to confirm no regression, then increase in 0.05s steps.
+        public static final double LAUNCH_LATENCY_SECONDS = 0.0;
+
         // Field-relative 3D position of the shooting target (AprilTag 26)
         private static final Pose3d TAG_26_POSE = VisionConstants.APRIL_TAG_FIELD_LAYOUT
             .getTagPose(26)
