@@ -89,11 +89,11 @@ public final class Constants {
         public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.610;
 
 
-        public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() + 0;
+        public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() - 2;
         public static final double BLUE_SHUTTLE_TARGET_Y_METERS = TAG_26_POSE.getY();
         public static final double BLUE_SHUTTLE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0;
 
-        public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 0;
+        public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 2;
         public static final double RED_SHUTTLE_TARGET_Y_METERS = TAG_10_POSE.getY();
         public static final double RED_SHUTTLE_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0;
 
