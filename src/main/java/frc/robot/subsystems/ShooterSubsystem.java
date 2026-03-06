@@ -160,7 +160,7 @@ public class ShooterSubsystem implements Subsystem {
         double horizontalSpeed = muzzleSpeed * Math.cos(elevAngleRad);
 
         Translation3d virtualTarget = targetPosition;
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 10; i++) {
             double dx = virtualTarget.getX() - launchPosition.getX();
             double dy = virtualTarget.getY() - launchPosition.getY();
             double horizontalDist = Math.hypot(dx, dy);
