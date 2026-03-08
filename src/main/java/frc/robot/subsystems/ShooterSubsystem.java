@@ -101,8 +101,8 @@ public class ShooterSubsystem implements Subsystem {
         flywheelRPSTable.put(3.0099, 32.5);
         flywheelRPSTable.put(3.7211, 33.5);
         flywheelRPSTable.put(4.0767, 34.5);
-        flywheelRPSTable.put(5.9182, 40.5);
-        flywheelRPSTable.put(6.2484, 42.0);
+        flywheelRPSTable.put(5.9182, 39.75);
+        flywheelRPSTable.put(6.2484, 41.5);
 
         // TODO: Calibrate by shooting at a fixed target while driving — put(robot_speed_mps, extra_offset_meters)
         velocityTargetOffsetTable.put(0.0, 0.0);

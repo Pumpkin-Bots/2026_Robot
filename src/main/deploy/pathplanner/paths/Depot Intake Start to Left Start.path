@@ -3,13 +3,13 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 1.3607560627674748,
-        "y": 5.982268188302426
+        "x": 1.407397590361446,
+        "y": 5.805289156626507
       },
       "prevControl": null,
       "nextControl": {
-        "x": 2.328692332161455,
-        "y": 6.681288567116956
+        "x": 2.3753338597554263,
+        "y": 6.504309535441037
       },
       "isLocked": false,
       "linkedName": "Depot Start Intake Spot"
@@ -41,7 +41,7 @@
     "unlimited": false
   },
   "goalEndState": {
-    "velocity": 0,
+    "velocity": 0.5,
     "rotation": 180.0
   },
   "reversed": false,
