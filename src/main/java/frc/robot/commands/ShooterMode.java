@@ -30,7 +30,7 @@ public class ShooterMode extends Command {
 
     @Override
     public void execute() {
-        m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
+        
         m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
 
         // Select target based on alliance color (defaults to blue if unknown)
@@ -44,6 +44,7 @@ public class ShooterMode extends Command {
 
         if (m_timer.hasElapsed(0.75)) {
             m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
+            m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
         }
     }
 

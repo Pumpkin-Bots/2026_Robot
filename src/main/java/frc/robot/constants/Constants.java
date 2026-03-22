@@ -89,11 +89,11 @@ public final class Constants {
         public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.610;
 
 
-        public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() + 0;
+        public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() - 2;
         public static final double BLUE_SHUTTLE_TARGET_Y_METERS = TAG_26_POSE.getY();
         public static final double BLUE_SHUTTLE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0;
 
-        public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 0;
+        public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 2;
         public static final double RED_SHUTTLE_TARGET_Y_METERS = TAG_10_POSE.getY();
         public static final double RED_SHUTTLE_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0;
 
@@ -146,7 +146,7 @@ public final class Constants {
         public static final double PIVOT_KD = 0.1;
 
         // ---- Roller speed ----
-        public static final double ROLLER_INTAKE_SPEED = -1.00; // 60% duty cycle
+        public static final double ROLLER_INTAKE_SPEED = -1; // 100% duty cycle
         public static final double ROLLER_JAM_SPEED = 0.2;
 
         // ---- Position tolerance ----
@@ -165,7 +165,6 @@ public final class Constants {
         /**
          * Camera mounting transforms relative to robot center.
          * X: Forward, Y: Left, Z: Up
-         * TODO: Update once final camera placement is confirmed.
          */
         public static final Transform3d ROBOT_TO_BACK_LEFT_CAMERA = new Transform3d(
             new Translation3d(-0.2413, 0.2286, 0.36195),
@@ -177,13 +176,11 @@ public final class Constants {
             new Rotation3d(0.0, Math.toRadians(14.036), Math.toRadians(-116.194))
         );
 
-        // TO DO: update location of intake right camera
         public static final Transform3d ROBOT_TO_INTAKE_RIGHT_CAMERA = new Transform3d(
             new Translation3d(0.317, -0.305, 0.381),
             new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(-45))
         );
 
-        // TO DO: update location of intake left camera
         public static final Transform3d ROBOT_TO_INTAKE_LEFT_CAMERA = new Transform3d(
             new Translation3d(0.317, 0.305, 0.381),
             new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(45))

@@ -75,32 +75,40 @@ public class ShooterSubsystem implements Subsystem {
     // Lookup tables: distance (meters) → value. Populate with empirical test shots.
     private static final InterpolatingDoubleTreeMap rackAngleTable = new InterpolatingDoubleTreeMap();
     private static final InterpolatingDoubleTreeMap flywheelRPSTable = new InterpolatingDoubleTreeMap();
+
+    // Velocity offset table: robot speed (m/s) → extra virtual target offset (meters).
+    // The offset is applied opposite to the direction of robot motion, on top of the
+    // physics-based virtual target compensation. Calibrate by shooting at a fixed
+    // target while driving at known speeds and adjusting until shots land.
+    private static final InterpolatingDoubleTreeMap velocityTargetOffsetTable = new InterpolatingDoubleTreeMap();
+
     static {
         // TODO: Fill in from test shots — put(distance_meters, rack_angle_deg)
-        rackAngleTable.put(1.4478, 15.0);
-        rackAngleTable.put(1.778, 15.0);
-        rackAngleTable.put(2.13, 15.0);
-        rackAngleTable.put(2.61, 15.0);
-        rackAngleTable.put(3.10, 17.16);
-        rackAngleTable.put(3.61, 19.32);
-        rackAngleTable.put(4.00,20.3);
-        rackAngleTable.put(4.26, 21.49);
-        rackAngleTable.put(4.57, 25.81);
-        rackAngleTable.put(5.45, 29.81);
+        rackAngleTable.put(1.3589, 15.0);
+        rackAngleTable.put(1.7018, 15.0);
+        rackAngleTable.put(2.3495, 17.0);
+        rackAngleTable.put(3.0099, 19.0);
+        rackAngleTable.put(3.7211, 23.0);
+        rackAngleTable.put(4.0767, 27.0);
+        rackAngleTable.put(5.9182, 35.0);
+        rackAngleTable.put(5.9182, 37.0);
+
 
         // TODO: Fill in from test shots — put(distance_meters, flywheel_motor_RPS)
-        flywheelRPSTable.put(1.4478, 32.0);
-        flywheelRPSTable.put(1.778, 35.0);
-        flywheelRPSTable.put(2.13, 37.0);
-        flywheelRPSTable.put(2.61, 40.0);
-        flywheelRPSTable.put(3.10, 40.0);
-        flywheelRPSTable.put(3.61, 41.0);
-        flywheelRPSTable.put(4.00, 42.0);
-        flywheelRPSTable.put(4.26, 42.0);
-        flywheelRPSTable.put(4.57, 43.0);
-        flywheelRPSTable.put(5.45, 43.5);
-        flywheelRPSTable.put(6.00, 44.0);
+        flywheelRPSTable.put(1.3589, 27.0);
+        flywheelRPSTable.put(1.7018, 28.0);
+        flywheelRPSTable.put(2.3495, 30.0);
+        flywheelRPSTable.put(3.0099, 32.5);
+        flywheelRPSTable.put(3.7211, 33.5);
+        flywheelRPSTable.put(4.0767, 34.5);
+        flywheelRPSTable.put(5.9182, 39.75);
+        flywheelRPSTable.put(6.2484, 41.5);
 
+        // TODO: Calibrate by shooting at a fixed target while driving — put(robot_speed_mps, extra_offset_meters)
+        velocityTargetOffsetTable.put(0.0, 0.0);
+        velocityTargetOffsetTable.put(1.0, 0.0);
+        velocityTargetOffsetTable.put(2.0, 0.0);
+        velocityTargetOffsetTable.put(3.0, 0.0);
     }
 
     public ShooterSubsystem(CommandSwerveDrivetrain drivetrain) {
@@ -152,7 +160,7 @@ public class ShooterSubsystem implements Subsystem {
         double horizontalSpeed = muzzleSpeed * Math.cos(elevAngleRad);
 
         Translation3d virtualTarget = targetPosition;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 10; i++) {
             double dx = virtualTarget.getX() - launchPosition.getX();
             double dy = virtualTarget.getY() - launchPosition.getY();
             double horizontalDist = Math.hypot(dx, dy);
@@ -200,6 +208,18 @@ public class ShooterSubsystem implements Subsystem {
         Translation3d virtualTarget = calculateVirtualTargetPosition(
             targetPosition, launchPosition, fieldRelativeSpeeds, rackAngleDeg, muzzleSpeed);
 
+        // Apply empirical velocity offset: shift virtual target opposite to robot motion
+        double robotSpeed = Math.hypot(fieldRelativeSpeeds.vxMetersPerSecond, fieldRelativeSpeeds.vyMetersPerSecond);
+        double extraOffsetMeters = velocityTargetOffsetTable.get(robotSpeed);
+        if (robotSpeed > 0.001) {
+            double vxUnit = fieldRelativeSpeeds.vxMetersPerSecond / robotSpeed;
+            double vyUnit = fieldRelativeSpeeds.vyMetersPerSecond / robotSpeed;
+            virtualTarget = new Translation3d(
+                virtualTarget.getX() - vxUnit * extraOffsetMeters,
+                virtualTarget.getY() - vyUnit * extraOffsetMeters,
+                virtualTarget.getZ());
+        }
+
         // Turret: field-relative angle to virtual target, converted to robot-relative
         double dx = virtualTarget.getX() - launchPosition.getX();
         double dy = virtualTarget.getY() - launchPosition.getY();
@@ -207,6 +227,12 @@ public class ShooterSubsystem implements Subsystem {
             - robotPose.getRotation().getDegrees();
         double horizontalDist = Math.hypot(dx, dy);
 
+        // Re-lookup shooter parameters from virtual target distance
+        rackAngleDeg = rackAngleTable.get(horizontalDist);
+        flywheelMotorRPS = flywheelRPSTable.get(horizontalDist);
+
+        SmartDashboard.putNumber("Shooter/RobotSpeed", robotSpeed);
+        SmartDashboard.putNumber("Shooter/VelocityTargetOffsetMeters", extraOffsetMeters);
         SmartDashboard.putNumber("Shooter/TurretAngleDeg", turretAngleDeg);
         SmartDashboard.putNumber("Shooter/ShooterX", launchPosition.getX());
         SmartDashboard.putNumber("Shooter/ShooterY", launchPosition.getY());

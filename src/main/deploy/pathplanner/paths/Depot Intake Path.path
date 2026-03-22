@@ -3,25 +3,25 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 1.3607560627674748,
-        "y": 5.982268188302426
+        "x": 1.407397590361446,
+        "y": 5.805289156626507
       },
       "prevControl": null,
       "nextControl": {
-        "x": 0.7676292131894924,
-        "y": 5.980029424330456
+        "x": 0.8142707407834635,
+        "y": 5.803050392654537
       },
       "isLocked": false,
       "linkedName": "Depot Start Intake Spot"
     },
     {
       "anchor": {
-        "x": 0.7138231098430812,
-        "y": 5.982268188302426
+        "x": 0.7080240963855422,
+        "y": 5.805289156626507
       },
       "prevControl": {
-        "x": 1.12811332021041,
-        "y": 5.993162891943099
+        "x": 1.1223143067528711,
+        "y": 5.81618386026718
       },
       "nextControl": null,
       "isLocked": false,
@@ -33,7 +33,7 @@
   "pointTowardsZones": [],
   "eventMarkers": [],
   "globalConstraints": {
-    "maxVelocity": 0.25,
+    "maxVelocity": 0.5,
     "maxAcceleration": 3.0,
     "maxAngularVelocity": 540.0,
     "maxAngularAcceleration": 720.0,
@@ -47,7 +47,7 @@
   "reversed": false,
   "folder": null,
   "idealStartingState": {
-    "velocity": 0,
+    "velocity": 0.5,
     "rotation": 180.0
   },
   "useDefaultConstraints": false

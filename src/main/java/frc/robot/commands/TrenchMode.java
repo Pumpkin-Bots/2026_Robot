@@ -35,7 +35,7 @@ public class TrenchMode extends Command {
         }
 
         m_Shooter.aimTurretAt(targetPosition);
-        m_Shooter.setShooterRackPosition(0);
+        m_Shooter.setShooterRackAngle(20);
         m_Shooter.setShooterFlywheelVelocity(0);
     }
 

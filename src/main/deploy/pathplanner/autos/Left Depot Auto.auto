@@ -5,45 +5,85 @@
     "data": {
       "commands": [
         {
-          "type": "named",
+          "type": "race",
           "data": {
-            "name": "ShooterMode"
+            "commands": [
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShooterMode"
+                }
+              },
+              {
+                "type": "wait",
+                "data": {
+                  "waitTime": 3.0
+                }
+              }
+            ]
           }
         },
         {
-          "type": "wait",
+          "type": "race",
           "data": {
-            "waitTime": 3.0
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Left Start To Depot Intake Start"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShooterMode"
+                }
+              }
+            ]
           }
         },
         {
-          "type": "path",
+          "type": "race",
           "data": {
-            "pathName": "Left Start To Depot Intake Start"
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Depot Intake Path"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShooterMode"
+                }
+              }
+            ]
           }
         },
         {
-          "type": "path",
+          "type": "race",
           "data": {
-            "pathName": "Depot Intake Path"
-          }
-        },
-        {
-          "type": "path",
-          "data": {
-            "pathName": "Depot Reverse Path"
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Depot Reverse Path"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShooterMode"
+                }
+              }
+            ]
           }
         },
         {
           "type": "named",
           "data": {
             "name": "HomeMode"
-          }
-        },
-        {
-          "type": "path",
-          "data": {
-            "pathName": "Depot Intake Start to Left Start"
           }
         }
       ]

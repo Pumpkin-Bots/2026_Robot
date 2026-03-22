@@ -3,37 +3,32 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 5.65091011235955,
-        "y": 5.645179775280899
+        "x": 3.560328102710413,
+        "y": 0.5480313837375184
       },
       "prevControl": null,
       "nextControl": {
-        "x": 8.16375761752873,
-        "y": 5.444223500937665
+        "x": 5.876348074180672,
+        "y": 0.6386019971421877
       },
       "isLocked": false,
-      "linkedName": "Left Bump Sweep End"
+      "linkedName": null
     },
     {
       "anchor": {
-        "x": 5.630528089887639,
-        "y": 2.598067415730337
+        "x": 7.625265060240963,
+        "y": 1.4888433734939759
       },
       "prevControl": {
-        "x": 8.40834188719165,
-        "y": 3.1279999999999992
+        "x": 7.625265060240963,
+        "y": 0.3542181369500039
       },
       "nextControl": null,
       "isLocked": false,
-      "linkedName": "Right Trench Sweep"
+      "linkedName": "Center Field Right"
     }
   ],
-  "rotationTargets": [
-    {
-      "waypointRelativePos": 0.5,
-      "rotationDegrees": 59.99999999999999
-    }
-  ],
+  "rotationTargets": [],
   "constraintZones": [],
   "pointTowardsZones": [],
   "eventMarkers": [],
@@ -46,14 +41,14 @@
     "unlimited": false
   },
   "goalEndState": {
-    "velocity": 0,
-    "rotation": 0.0
+    "velocity": 1.0,
+    "rotation": -146.68936917543914
   },
   "reversed": false,
   "folder": null,
   "idealStartingState": {
-    "velocity": 0,
-    "rotation": -0.7905577070526657
+    "velocity": 0.0,
+    "rotation": 180.0
   },
   "useDefaultConstraints": true
 }
