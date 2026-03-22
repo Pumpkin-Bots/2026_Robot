@@ -41,14 +41,14 @@ public class VisionSubsystem extends SubsystemBase {
     // Camera instances
     private final PhotonCamera backLeftCamera;
     private final PhotonCamera backRightCamera;
-    private final PhotonCamera intakeRightCamera;
-    private final PhotonCamera intakeLeftCamera;
+    private final PhotonCamera frontRightCamera;
+    private final PhotonCamera frontLeftCamera;
 
     // Pose estimators for each camera (using new 2-argument constructor)
     private final PhotonPoseEstimator backLeftEstimator;
     private final PhotonPoseEstimator backRightEstimator;
-    private final PhotonPoseEstimator intakeRightEstimator;
-    private final PhotonPoseEstimator intakeLeftEstimator;
+    private final PhotonPoseEstimator frontRightEstimator;
+    private final PhotonPoseEstimator frontLeftEstimator;
 
     // List of all cameras and estimators for iteration
     private final List<CameraConfig> cameras = new ArrayList<>();
@@ -91,8 +91,8 @@ public class VisionSubsystem extends SubsystemBase {
         // Initialize cameras
         backLeftCamera = new PhotonCamera(VisionConstants.BACK_LEFT_CAMERA_NAME);
         backRightCamera = new PhotonCamera(VisionConstants.BACK_RIGHT_CAMERA_NAME);
-        intakeRightCamera = new PhotonCamera(VisionConstants.INTAKE_RIGHT_CAMERA_NAME);
-        intakeLeftCamera = new PhotonCamera(VisionConstants.INTAKE_LEFT_CAMERA_NAME);
+        frontRightCamera = new PhotonCamera(VisionConstants.FRONT_RIGHT_CAMERA_NAME);
+        frontLeftCamera = new PhotonCamera(VisionConstants.FRONT_LEFT_CAMERA_NAME);
 
         // Initialize pose estimators using new 2-argument constructor (PhotonVision 2026 API)
         backLeftEstimator = new PhotonPoseEstimator(
@@ -105,14 +105,14 @@ public class VisionSubsystem extends SubsystemBase {
             VisionConstants.ROBOT_TO_BACK_RIGHT_CAMERA
         );
 
-        intakeRightEstimator = new PhotonPoseEstimator(
+        frontRightEstimator = new PhotonPoseEstimator(
             VisionConstants.APRIL_TAG_FIELD_LAYOUT,
-            VisionConstants.ROBOT_TO_INTAKE_RIGHT_CAMERA
+            VisionConstants.ROBOT_TO_FRONT_RIGHT_CAMERA
         );
 
-        intakeLeftEstimator = new PhotonPoseEstimator(
+        frontLeftEstimator = new PhotonPoseEstimator(
             VisionConstants.APRIL_TAG_FIELD_LAYOUT,
-            VisionConstants.ROBOT_TO_INTAKE_LEFT_CAMERA
+            VisionConstants.ROBOT_TO_FRONT_LEFT_CAMERA
         );
 
         // Register cameras for iteration
@@ -129,16 +129,16 @@ public class VisionSubsystem extends SubsystemBase {
             VisionConstants.BACK_RIGHT_CAMERA_NAME
         ));
         cameras.add(new CameraConfig(
-            intakeRightCamera,
-            intakeRightEstimator,
-            VisionConstants.ROBOT_TO_INTAKE_RIGHT_CAMERA,
-            VisionConstants.INTAKE_RIGHT_CAMERA_NAME
+            frontRightCamera,
+            frontRightEstimator,
+            VisionConstants.ROBOT_TO_FRONT_RIGHT_CAMERA,
+            VisionConstants.FRONT_RIGHT_CAMERA_NAME
         ));
         cameras.add(new CameraConfig(
-            intakeLeftCamera,
-            intakeLeftEstimator,
-            VisionConstants.ROBOT_TO_INTAKE_LEFT_CAMERA,
-            VisionConstants.INTAKE_LEFT_CAMERA_NAME
+            frontLeftCamera,
+            frontLeftEstimator,
+            VisionConstants.ROBOT_TO_FRONT_LEFT_CAMERA,
+            VisionConstants.FRONT_LEFT_CAMERA_NAME
         ));
     }
 
@@ -166,13 +166,15 @@ public class VisionSubsystem extends SubsystemBase {
      * @param estimates List to add valid estimates to
      */
     private void getEstimatesFromCamera(CameraConfig config, List<VisionPoseEstimate> estimates) {
+        
         // Skip intake cameras if intake subsystem is available and intake is not in position
-        if (m_intakeSubsystem != null && isIntakeCamera(config.name)) {
-            if (!m_intakeSubsystem.isInIntakePosition()) {
-                return; // Skip processing this camera
-            }
-        }
-
+        // Commented this out since front cameras are no longer on the intake
+        //if (m_intakeSubsystem != null && isIntakeCamera(config.name)) {
+        //    if (!m_intakeSubsystem.isInIntakePosition()) {
+        //        return; // Skip processing this camera
+        //    }
+        //}
+     
         // Use getAllUnreadResults() instead of deprecated getLatestResult()
         List<PhotonPipelineResult> results = config.camera.getAllUnreadResults();
 
@@ -343,21 +345,21 @@ public class VisionSubsystem extends SubsystemBase {
     }
 
    /**
-     * Checks if the intake right camera is connected.
+     * Checks if the front right camera is connected.
      *
      * @return true if connected, false otherwise
      */
-    public boolean isIntakeRightConnected() {
-        return intakeRightCamera.isConnected();
+    public boolean isFrontRightConnected() {
+        return frontRightCamera.isConnected();
     }
 
     /**
-     * Checks if the intake left camera is connected.
+     * Checks if the front left camera is connected.
      *
      * @return true if connected, false otherwise
      */
-    public boolean isIntakeLeftConnected() {
-        return intakeLeftCamera.isConnected();
+    public boolean isFrontLeftConnected() {
+        return frontLeftCamera.isConnected();
     }
 
     @Override
