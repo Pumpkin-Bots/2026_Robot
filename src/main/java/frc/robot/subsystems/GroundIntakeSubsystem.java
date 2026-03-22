@@ -17,6 +17,8 @@ public class GroundIntakeSubsystem implements Subsystem {
     private final TalonFX m_leftPivotMotor;
     private final TalonFX m_rightPivotMotor;
     private final TalonFX m_rollerMotor;
+    private final TalonFX m_rightIndexerMotor;
+    private final TalonFX m_leftIndexerMotor;
 
     private static final Slot0Configs intakeGains = new Slot0Configs()
         .withKP(Constants.GroundIntakeConstants.PIVOT_KP)
@@ -32,8 +34,10 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_leftPivotMotor = new TalonFX(Constants.GroundIntakeConstants.LEFT_PIVOT_ID);
         m_rightPivotMotor = new TalonFX(Constants.GroundIntakeConstants.RIGHT_PIVOT_ID);
         m_rollerMotor = new TalonFX(Constants.GroundIntakeConstants.ROLLER_ID);
-
+        m_leftIndexerMotor = new TalonFX(Constants.GroundIntakeConstants.LEFT_INDEXER_ID);
+        m_rightIndexerMotor = new TalonFX(Constants.GroundIntakeConstants.RIGHT_INDEXER_ID);
         m_leftPivotMotor.getConfigurator().apply(intakeGains);
+        m_rightPivotMotor.getConfigurator().apply(intakeGains);
         m_rollerMotor.getConfigurator().apply(rollerCurrentLimits);
     }
 
@@ -45,11 +49,19 @@ public class GroundIntakeSubsystem implements Subsystem {
     public void setRollerSpeed(double speed) {
         m_rollerMotor.set(speed);
     }
+    public void setLeftIndexerMotorSpeed(double speed){
+        m_leftIndexerMotor.set(speed);
+    }
+    public void setRightIndexerMotorSpeed(double speed){
+        m_rightIndexerMotor.set(speed);
+    }
 
     public void stop() {
         m_rollerMotor.set(0);
         m_leftPivotMotor.setControl(new StaticBrake());
         m_rightPivotMotor.setControl(new StaticBrake());
+        m_leftIndexerMotor.set(speed);
+        m_rightIndexerMotor.set(speed);
     }
 
     public Command disabledCommand() {
