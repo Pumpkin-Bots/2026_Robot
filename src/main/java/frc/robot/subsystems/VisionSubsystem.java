@@ -80,7 +80,7 @@ public class VisionSubsystem extends SubsystemBase {
 
     /**
      * Creates a new VisionSubsystem with a reference to the intake subsystem.
-     * When an intake subsystem is provided, the intake cameras will only be used
+     * When an intake subsystem is provided, the front cameras will only be used
      * when the intake is in the intake position.
      *
      * @param intakeSubsystem The ground intake subsystem (can be null)
@@ -167,9 +167,9 @@ public class VisionSubsystem extends SubsystemBase {
      */
     private void getEstimatesFromCamera(CameraConfig config, List<VisionPoseEstimate> estimates) {
         
-        // Skip intake cameras if intake subsystem is available and intake is not in position
+        // Skip front cameras if intake subsystem is available and intake is not in position
         // Commented this out since front cameras are no longer on the intake
-        //if (m_intakeSubsystem != null && isIntakeCamera(config.name)) {
+        //if (m_intakeSubsystem != null && isFrontCamera(config.name)) {
         //    if (!m_intakeSubsystem.isInIntakePosition()) {
         //        return; // Skip processing this camera
         //    }
@@ -316,14 +316,14 @@ public class VisionSubsystem extends SubsystemBase {
     }
 
     /**
-     * Checks if a camera is an intake camera based on its name.
+     * Checks if a camera is an front camera based on its name.
      *
      * @param cameraName The name of the camera
-     * @return true if it's an intake camera, false otherwise
+     * @return true if it's a front camera, false otherwise
      */
-    private boolean isIntakeCamera(String cameraName) {
-        return cameraName.equals(VisionConstants.INTAKE_RIGHT_CAMERA_NAME) ||
-               cameraName.equals(VisionConstants.INTAKE_LEFT_CAMERA_NAME);
+    private boolean isFrontCamera(String cameraName) {
+        return cameraName.equals(VisionConstants.FRONT_RIGHT_CAMERA_NAME) ||
+               cameraName.equals(VisionConstants.FRONT_LEFT_CAMERA_NAME);
     }
 
     /**

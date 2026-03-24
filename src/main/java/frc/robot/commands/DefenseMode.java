@@ -25,6 +25,8 @@ public class DefenseMode extends Command {
     public void execute() {
         m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.DEFENSE_POSITION);
         m_GroundIntake.setRollerSpeed(0);
+        m_GroundIntake.setLeftIndexerMotorSpeed(0);
+        m_GroundIntake.setRightIndexerMotorSpeed(0);
         m_Turret.setTurretIndexerSpeed(0);
 
         // Select target based on alliance color (defaults to blue if unknown)

@@ -5,8 +5,9 @@ import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.StaticBrake;
-import com.ctre.phoenix6.controls.StrictFollower;
+import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.signals.MotorAlignmentValue;
 
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
@@ -43,7 +44,7 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     public void setPivotMotorPosition(double position) {
         m_leftPivotMotor.setControl(new PositionVoltage(position));
-        m_rightPivotMotor.setControl(new StrictFollower(Constants.GroundIntakeConstants.LEFT_PIVOT_ID));
+        m_rightPivotMotor.setControl(new Follower(Constants.GroundIntakeConstants.LEFT_PIVOT_ID, MotorAlignmentValue.Opposed));
     }
 
     public void setRollerSpeed(double speed) {
@@ -60,8 +61,8 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rollerMotor.set(0);
         m_leftPivotMotor.setControl(new StaticBrake());
         m_rightPivotMotor.setControl(new StaticBrake());
-        m_leftIndexerMotor.set(speed);
-        m_rightIndexerMotor.set(speed);
+        m_leftIndexerMotor.set(0);
+        m_rightIndexerMotor.set(0);
     }
 
     public Command disabledCommand() {

@@ -181,7 +181,7 @@ public class RobotContainer {
                 }
 
                 // Update telemetry with vision data
-                logger.updateVision(estimates, vision.isBackLeftConnected(), vision.isBackRightConnected(), vision.isIntakeRightConnected(), vision.isIntakeLeftConnected());
+                logger.updateVision(estimates, vision.isBackLeftConnected(), vision.isBackRightConnected(), vision.isFrontRightConnected(), vision.isFrontLeftConnected());
             })
         );
     }

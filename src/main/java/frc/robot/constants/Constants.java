@@ -118,7 +118,7 @@ public final class Constants {
     }
 
     public static final class TurretConstants {
-        public static final int TURRET_INDEXER_ID = 24;
+        public static final int TURRET_INDEXER_ID = 28;
 
         public static final double TURRET_INDEXER_SPEED = .45; // 60%
     }
@@ -126,8 +126,8 @@ public final class Constants {
     public static final class GroundIntakeConstants {
 
         // ---- Motor CAN IDs ----
-        public static final int RIGHT_PIVOT_ID = 20;
-        public static final int LEFT_PIVOT_ID  = 21;
+        public static final int RIGHT_PIVOT_ID = 21;
+        public static final int LEFT_PIVOT_ID  = 20;
         public static final int ROLLER_ID = 22;
         public static final int LEFT_INDEXER_ID = 23;
         public static final int RIGHT_INDEXER_ID = 24;
@@ -135,8 +135,8 @@ public final class Constants {
         // ---- Pivot target positions (motor rotations) ----
         // NOTE: These are rotor rotations. Multiply by gear ratio if needed.
         public static final double DEFENSE_POSITION    =  0.0;
-        public static final double TRENCH_POSITION  = -2.0;
-        public static final double SHOOTER_POSITION = -4.7;
+        public static final double TRENCH_POSITION  = 0.0;
+        public static final double SHOOTER_POSITION = 0.0; 
 
         // ---- Pivot PID gains (Slot 0) ----
         //   kP: raise if pivot is slow, lower if it oscillates
@@ -148,7 +148,9 @@ public final class Constants {
         public static final double PIVOT_KD = 0.1;
 
         // ---- Roller speed ----
-        public static final double ROLLER_INTAKE_SPEED = -1.00; // 60% duty cycle
+        public static final double ROLLER_INTAKE_SPEED = -0.20; // 20% duty cycle
+        public static final double RIGHT_INDEXER_SPEED = -0.20; // 20% duty cycle
+        public static final double LEFT_INDEXER_SPEED = -0.20; // 20% duty cycle
         public static final double ROLLER_JAM_SPEED = 0.2;
 
         // ---- Position tolerance ----
