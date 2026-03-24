@@ -92,6 +92,8 @@ public class ShooterSubsystem implements Subsystem {
         rackAngleTable.put(4.0767, 27.0);
         rackAngleTable.put(5.9182, 35.0);
         rackAngleTable.put(5.9182, 37.0);
+        rackAngleTable.put(8.000, 43.0);
+        rackAngleTable.put(10.000, 43.0);
 
 
         // TODO: Fill in from test shots — put(distance_meters, flywheel_motor_RPS)
@@ -102,7 +104,9 @@ public class ShooterSubsystem implements Subsystem {
         flywheelRPSTable.put(3.7211, 33.5);
         flywheelRPSTable.put(4.0767, 34.5);
         flywheelRPSTable.put(5.9182, 39.75);
-        flywheelRPSTable.put(6.2484, 41.5);
+        flywheelRPSTable.put(6.2484, 41.375);
+        flywheelRPSTable.put(8.000, 45.0);
+        flywheelRPSTable.put(10.00, 50.0);
 
         // TODO: Calibrate by shooting at a fixed target while driving — put(robot_speed_mps, extra_offset_meters)
         velocityTargetOffsetTable.put(0.0, 0.0);
