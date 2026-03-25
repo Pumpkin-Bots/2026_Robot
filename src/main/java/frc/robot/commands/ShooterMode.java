@@ -26,12 +26,11 @@ public class ShooterMode extends Command {
     @Override
     public void initialize() {
         m_timer.restart();
+        m_GroundIntake.setPivotPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
     }
 
     @Override
     public void execute() {
-        
-        m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
 
         // Select target based on alliance color (defaults to blue if unknown)
         Translation3d targetPosition = Constants.ShooterConstants.BLUE_TARGET_POSITION;

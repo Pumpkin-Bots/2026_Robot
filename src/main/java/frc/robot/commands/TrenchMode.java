@@ -22,8 +22,12 @@ public class TrenchMode extends Command {
     }
 
     @Override
+    public void initialize() {
+        m_GroundIntake.setPivotPosition(Constants.GroundIntakeConstants.TRENCH_POSITION);
+    }
+
+    @Override
     public void execute() {
-        m_GroundIntake.setPivotMotorPosition(Constants.GroundIntakeConstants.TRENCH_POSITION);
         m_GroundIntake.setRollerSpeed(0);
         m_GroundIntake.setLeftIndexerMotorSpeed(0);
         m_GroundIntake.setRightIndexerMotorSpeed(0);

@@ -39,7 +39,7 @@ public final class Constants {
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
-        public static final double TURRET_ROTATOR_MAX_ANGLE = 320;
+        public static final double TURRET_ROTATOR_MAX_ANGLE = 300;
 
 
         public static final double RACK_KP = 20;
@@ -120,41 +120,77 @@ public final class Constants {
     public static final class TurretConstants {
         public static final int TURRET_INDEXER_ID = 28;
 
-        public static final double TURRET_INDEXER_SPEED = .45; // 60%
+        public static final double TURRET_INDEXER_SPEED = .65; // 60%
     }
 
     public static final class GroundIntakeConstants {
 
         // ---- Motor CAN IDs ----
-        public static final int RIGHT_PIVOT_ID = 21;
-        public static final int LEFT_PIVOT_ID  = 20;
+        public static final int RIGHT_PIVOT_ID = 20;
+        public static final int LEFT_PIVOT_ID  = 21;
         public static final int ROLLER_ID = 22;
         public static final int LEFT_INDEXER_ID = 23;
         public static final int RIGHT_INDEXER_ID = 24;
 
-        // ---- Pivot target positions (motor rotations) ----
-        // NOTE: These are rotor rotations. Multiply by gear ratio if needed.
-        public static final double DEFENSE_POSITION    =  0.0;
-        public static final double TRENCH_POSITION  = 0.0;
-        public static final double SHOOTER_POSITION = 0.0; 
+        // ---- Gear ratio ----
+        // Number of motor rotor rotations per one full mechanism (pivot arm) rotation.
+        // Example: if the pivot has a 100:1 gearbox, this is 100.0.
+        // Used by Phoenix 6 SensorToMechanismRatio so all positions below are in
+        // mechanism rotations (i.e. 0.25 = 90°), not raw rotor counts.
+        public static final double PIVOT_GEAR_RATIO = 10.0; // 10 rotor rotations per 1 arm rotation
 
-        // ---- Pivot PID gains (Slot 0) ----
-        //   kP: raise if pivot is slow, lower if it oscillates
-        //   kD: dampens overshoot — increase if oscillating
-        //   kS: static friction feed-forward (~0.1–0.5 V)
-        //   kG: gravity feed-forward — add if pivot fights gravity
-        public static final double PIVOT_KP = 1.50;
+        // ---- Pivot target positions (mechanism rotations, 1.0 = full 360°) ----
+        // ZERO CONVENTION: 0.0 mechanism rotations = arm horizontal (pointing straight out).
+        //   - At this angle gravity torque is maximum → Arm_Cosine kG applies at 100%.
+        //   - The encoder is seeded automatically in the constructor, assuming the robot
+        //     starts with the intake resting on the UP hard stop.
+        //
+        // UP position: intake stowed, resting on the upper hard stop.
+        //   Measure with a protractor or CAD: if the arm is 30° above horizontal, this is 30/360 = 0.0833
+        public static final double PIVOT_UP_ROTATIONS   = 0.0; // TODO: measure (mechanism rotations)
+
+        // DOWN position: intake deployed, resting on the lower hard stop.
+        //   If the arm is 20° below horizontal, this is -20/360 = -0.0556
+        public static final double PIVOT_DOWN_ROTATIONS = 0.37; // 0.35 mechanism rot × 10:1 gear ratio = 3.5 rotor rotations
+
+        // ---- Motion Magic profile ----
+        // Cruise velocity: max mechanism speed during a move (rotations/second).
+        public static final double PIVOT_CRUISE_VELOCITY_RPS = 1.0;
+
+        // Acceleration: how fast to ramp up to cruise velocity (rotations/second²).
+        public static final double PIVOT_ACCELERATION_RPS2 = 1.0;
+
+        // Jerk: limits rate of acceleration change (rotations/second³). 0 = disabled.
+        public static final double PIVOT_JERK_RPS3 = 0.0;
+
+        // ---- Pivot PID + feed-forward gains (Slot 0) ----
+        public static final double PIVOT_KP = 50.0;
         public static final double PIVOT_KI = 0.0;
-        public static final double PIVOT_KD = 0.1;
+        public static final double PIVOT_KD = 2.0;
+        public static final double PIVOT_KS = 0.0;
+        public static final double PIVOT_KV = 0.96;
+        public static final double PIVOT_KA = 0.0;
+        public static final double PIVOT_KG = 1.3;
 
-        // ---- Roller speed ----
-        public static final double ROLLER_INTAKE_SPEED = -0.20; // 20% duty cycle
-        public static final double RIGHT_INDEXER_SPEED = -0.20; // 20% duty cycle
-        public static final double LEFT_INDEXER_SPEED = -0.20; // 20% duty cycle
-        public static final double ROLLER_JAM_SPEED = 0.2;
+        // GravityOffsetPosition: position offset (mechanism rotations) applied to the
+        // cosine calculation so that kG is correct when encoder zero ≠ horizontal.
+        // Formula: kG × cos(2π × (position + PIVOT_GRAVITY_OFFSET))
+        public static final double PIVOT_GRAVITY_OFFSET = 0.2;
+
+        // ---- Named positions for commands (mechanism rotations) ----
+        public static final double DEFENSE_POSITION = PIVOT_UP_ROTATIONS;   // intake stowed
+        public static final double TRENCH_POSITION  = PIVOT_DOWN_ROTATIONS; // intake deployed for pickup
+        public static final double SHOOTER_POSITION = PIVOT_DOWN_ROTATIONS; // intake deployed for feeding shooter
+
+        // ---- Roller / indexer speeds ----
+        public static final double ROLLER_INTAKE_SPEED = 0.85; // 85% duty cycle
+        public static final double RIGHT_INDEXER_SPEED = 0.60; // 60% duty cycle
+        public static final double LEFT_INDEXER_SPEED = -0.60; // 60% duty cycle
+        public static final double ROLLER_JAM_SPEED = -0.2; // 20% duty cycle
 
         // ---- Position tolerance ----
-        public static final double PIVOT_TOLERANCE_ROTATIONS = 1.25;
+        // How close (in mechanism rotations) counts as "at position".
+        public static final double PIVOT_TOLERANCE_ROTATIONS = 0.02; // ~7°
     }
 
     public static final class VisionConstants {
@@ -172,25 +208,25 @@ public final class Constants {
          * TODO: Update once final camera placement is confirmed.
          */
         public static final Transform3d ROBOT_TO_BACK_LEFT_CAMERA = new Transform3d(
-            new Translation3d(-0.2413, 0.2286, 0.36195),
-            new Rotation3d(0.0, Math.toRadians(14.036), Math.toRadians(116.194))
+            new Translation3d(-0.3048, 0.1778, 0.3397),
+            new Rotation3d(0.0, Math.toRadians(11), Math.toRadians(135))
         );
 
         public static final Transform3d ROBOT_TO_BACK_RIGHT_CAMERA = new Transform3d(
-            new Translation3d(-0.2413, -0.2286, 0.36195),
-            new Rotation3d(0.0, Math.toRadians(14.036), Math.toRadians(-116.194))
+            new Translation3d(-0.3048, -0.1778, 0.3397),
+            new Rotation3d(0.0, Math.toRadians(11), Math.toRadians(-135))
         );
 
         // TO DO: update location of front right camera
         public static final Transform3d ROBOT_TO_FRONT_RIGHT_CAMERA = new Transform3d(
-            new Translation3d(0.317, -0.305, 0.381),
-            new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(-45))
+            new Translation3d(0.1651, -0.3143, 0.381),
+            new Rotation3d(0.0, Math.toRadians(11), Math.toRadians(-45))
         );
 
         // TO DO: update location of front left camera
         public static final Transform3d ROBOT_TO_FRONT_LEFT_CAMERA = new Transform3d(
-            new Translation3d(0.317, 0.305, 0.381),
-            new Rotation3d(0.0, Math.toRadians(9), Math.toRadians(45))
+            new Translation3d(0.1651, 0.3143, 0.381),
+            new Rotation3d(0.0, Math.toRadians(11), Math.toRadians(45))
         );
 
         public static final AprilTagFieldLayout APRIL_TAG_FIELD_LAYOUT =
