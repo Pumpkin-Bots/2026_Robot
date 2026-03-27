@@ -9,29 +9,10 @@
           "data": {
             "commands": [
               {
-                "type": "named",
-                "data": {
-                  "name": "ShooterMode"
-                }
-              },
-              {
                 "type": "wait",
                 "data": {
                   "waitTime": 3.0
                 }
-              }
-            ]
-          }
-        },
-        {
-          "type": "race",
-          "data": {
-            "commands": [
-              {
-                "type": "path",
-                "data": {
-                  "pathName": "Left Start To Depot Intake Start"
-                }
               },
               {
                 "type": "named",
@@ -49,13 +30,13 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "Depot Intake Path"
+                  "pathName": "Left Side to Center "
                 }
               },
               {
                 "type": "named",
                 "data": {
-                  "name": "ShooterMode"
+                  "name": "TrenchMode"
                 }
               }
             ]
@@ -68,7 +49,64 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "Depot Reverse Path"
+                  "pathName": "Center Left Shuttle Path"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShuttleMode"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "race",
+          "data": {
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Left Shuttle More"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShuttleMode"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "race",
+          "data": {
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Left Go Home"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "TrenchMode"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "race",
+          "data": {
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Left Shooting Corner"
                 }
               },
               {
@@ -78,12 +116,6 @@
                 }
               }
             ]
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "HomeMode"
           }
         }
       ]

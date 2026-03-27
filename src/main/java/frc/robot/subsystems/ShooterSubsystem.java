@@ -88,37 +88,65 @@ public class ShooterSubsystem implements Subsystem {
         rackAngleTable.put(3.0099, 19.0);
         rackAngleTable.put(3.7211, 23.0);
         rackAngleTable.put(4.0767, 27.0);
-        rackAngleTable.put(5.9182, 35.0);
-        rackAngleTable.put(5.9182, 37.0);
-        rackAngleTable.put(8.000, 43.0);
-        rackAngleTable.put(10.000, 43.0);
+        rackAngleTable.put(4.4, 29.0);
+        // Above 5 m: 1-meter intervals. Angle approaches hardware max (42°) by 8 m.
+        // launch_angle = 90° - rack_angle; higher rack = flatter shot, lower rack = steeper lob.
+        rackAngleTable.put(6.0, 38.0);
+        rackAngleTable.put(7.0, 41.0);
+        rackAngleTable.put(8.0, 42.0);
+        rackAngleTable.put(9.0, 42.0);
+        rackAngleTable.put(10.0, 42.0);
+        rackAngleTable.put(11.0, 42.0);
+        rackAngleTable.put(12.0, 42.0);
+        rackAngleTable.put(13.0, 42.0);
+        rackAngleTable.put(14.0, 42.0);
+        rackAngleTable.put(15.0, 42.0);
 
 
         // TODO: Fill in from test shots — put(distance_meters, flywheel_motor_RPS)
         flywheelRPSTable.put(1.3589, 27.0);
-        flywheelRPSTable.put(1.7018, 28.0);
-        flywheelRPSTable.put(2.3495, 30.0);
-        flywheelRPSTable.put(3.0099, 32.5);
-        flywheelRPSTable.put(3.7211, 33.5);
-        flywheelRPSTable.put(4.0767, 34.5);
-        flywheelRPSTable.put(5.9182, 39.75);
-        flywheelRPSTable.put(6.2484, 41.375);
-        flywheelRPSTable.put(8.000, 45.0);
-        flywheelRPSTable.put(10.00, 50.0);
+        flywheelRPSTable.put(1.7018, 26.0);
+        flywheelRPSTable.put(2.10, 29.0);
+        flywheelRPSTable.put(2.3495, 32.0);
+        flywheelRPSTable.put(3.0, 33.75);
+        flywheelRPSTable.put(3.5, 33.75);
+        flywheelRPSTable.put(4.4, 33.75);
+        flywheelRPSTable.put(5.0, 38.0);
+        // Above 5 m: physics-derived at ~80% flywheel efficiency.
+        // v0_req = d / (sin(rack) * t); RPS = v0_req / (0.80 * pi * 0.0762)
+        flywheelRPSTable.put(6.0, 44.0);
+        flywheelRPSTable.put(7.0, 47.0);
+        flywheelRPSTable.put(8.0, 50.0);
+        flywheelRPSTable.put(9.0, 52.5);
+        flywheelRPSTable.put(10.0, 55.0);
+        flywheelRPSTable.put(11.0, 57.5);
+        flywheelRPSTable.put(12.0, 59.5);
+        flywheelRPSTable.put(13.0, 62.0);
+        flywheelRPSTable.put(14.0, 64.0);
+        flywheelRPSTable.put(15.0, 66.0);
 
-        // Estimated flight times: t = dist / (muzzle_speed * cos(90° - rack_angle))
-        // where muzzle_speed = flywheel_RPS * π * FLYWHEEL_EFFECTIVE_DIAMETER_METERS.
-        // TODO: Replace with measured values from slow-motion video or timestamp logging.
-        flightTimeTable.put(1.3589, 0.81);
-        flightTimeTable.put(1.7018, 0.98);
-        flightTimeTable.put(2.3495, 1.12);
-        flightTimeTable.put(3.0099, 1.19);
-        flightTimeTable.put(3.7211, 1.19);
-        flightTimeTable.put(4.0767, 1.09);
-        flightTimeTable.put(5.9182, 1.03);
-        flightTimeTable.put(6.2484, 1.02);
-        flightTimeTable.put(8.000,  1.09);
-        flightTimeTable.put(10.000, 1.22);
+        // Physics-based flight times: t = sqrt(2 * (d*tan(launch) - Δh) / g)
+        // where launch = 90° - rack_angle (rack measured from vertical; rack=0° = horizontal).
+        // Δh = target_height - launch_height = 1.6764m (5.5 ft) - 0.4826m = 1.1938m.
+        // All shots arc high and descend into the target from above.
+        // TODO: Refine with measured values from slow-motion video or timestamp logging.
+        flightTimeTable.put(1.3589, 0.89);
+        flightTimeTable.put(1.7018, 1.03);
+        flightTimeTable.put(2.3495, 1.15);
+        flightTimeTable.put(3.0099, 1.24);
+        flightTimeTable.put(3.7211, 1.24);
+        flightTimeTable.put(4.0767, 1.18);
+        flightTimeTable.put(5.0,    1.17);
+        flightTimeTable.put(6.0,    1.15);
+        flightTimeTable.put(7.0,    1.18);
+        flightTimeTable.put(8.0,    1.25);
+        flightTimeTable.put(9.0,    1.34);
+        flightTimeTable.put(10.0,   1.42);
+        flightTimeTable.put(11.0,   1.50);
+        flightTimeTable.put(12.0,   1.57);
+        flightTimeTable.put(13.0,   1.64);
+        flightTimeTable.put(14.0,   1.71);
+        flightTimeTable.put(15.0,   1.78);
 
     }
 
@@ -150,19 +178,27 @@ public class ShooterSubsystem implements Subsystem {
     }
 
     /**
-     * Computes a virtual target position that compensates for robot motion during
-     * projectile flight time. Uses iterative refinement with flight time from the
-     * empirical lookup table.
+     * Computes a virtual target position that compensates for robot motion and
+     * turret-indexer spin during projectile flight time. Uses iterative refinement
+     * with flight time from the empirical lookup table.
+     *
+     * <p>The indexer imparts spin on the ball that creates an effective extra velocity
+     * component. The along-barrel component scales as cos(turretAngle) and the
+     * perpendicular component (left/right from the turret's perspective) scales as
+     * sin(turretAngle). Both are rotated into field coordinates and applied as
+     * additional velocity offsets so the aim point corrects for spin drift.
      *
      * @param targetPosition      field-relative 3D position of the actual target
      * @param launchPosition      field-relative 3D position of the ball at launch
      * @param fieldRelativeSpeeds robot velocity in field-relative coordinates
-     * @return adjusted 3D aim point that accounts for robot drift during flight
+     * @param robotHeadingRad     robot heading in radians (field-relative)
+     * @return adjusted 3D aim point that accounts for robot drift and spin during flight
      */
     private Translation3d calculateVirtualTargetPosition(
             Translation3d targetPosition,
             Translation3d launchPosition,
-            ChassisSpeeds fieldRelativeSpeeds) {
+            ChassisSpeeds fieldRelativeSpeeds,
+            double robotHeadingRad) {
         Translation3d virtualTarget = targetPosition;
         for (int i = 0; i < 10; i++) {
             double dx = virtualTarget.getX() - launchPosition.getX();
@@ -170,9 +206,34 @@ public class ShooterSubsystem implements Subsystem {
             double horizontalDist = Math.hypot(dx, dy);
             double flightTime = flightTimeTable.get(horizontalDist);
 
+            // Barrel direction in field frame and turret angle relative to robot
+            double barrelAngleRad = Math.atan2(dy, dx);
+            double turretAngleRad = barrelAngleRad - robotHeadingRad;
+
+            // Spin drift distances along and perpendicular to the shot-path line:
+            //   spinAlongBarrel > 0  →  ball lands further from turret than expected
+            //   spinLeftOfBarrel > 0  →  ball drifts left of the shot path
+            double spinAlongBarrel  = Constants.TurretConstants.INDEXER_SPIN_FORWARD_BACK_MAX_MS
+                * Math.cos(turretAngleRad) * flightTime;
+            double spinLeftOfBarrel = Constants.TurretConstants.INDEXER_SPIN_LEFT_RIGHT_MAX_MS
+                * Math.sin(turretAngleRad) * flightTime;
+
+            // Unit vectors in field frame: along barrel (toward target) and left of barrel
+            double barrelX =  Math.cos(barrelAngleRad);
+            double barrelY =  Math.sin(barrelAngleRad);
+            double leftX   = -Math.sin(barrelAngleRad);
+            double leftY   =  Math.cos(barrelAngleRad);
+
+            // Shift virtual target opposite to spin drift, plus robot-motion compensation
             virtualTarget = new Translation3d(
-                targetPosition.getX() - fieldRelativeSpeeds.vxMetersPerSecond * flightTime,
-                targetPosition.getY() - fieldRelativeSpeeds.vyMetersPerSecond * flightTime,
+                targetPosition.getX()
+                    - fieldRelativeSpeeds.vxMetersPerSecond * flightTime
+                    - spinAlongBarrel  * barrelX
+                    - spinLeftOfBarrel * leftX,
+                targetPosition.getY()
+                    - fieldRelativeSpeeds.vyMetersPerSecond * flightTime
+                    - spinAlongBarrel  * barrelY
+                    - spinLeftOfBarrel * leftY,
                 targetPosition.getZ());
         }
         return virtualTarget;
@@ -205,7 +266,7 @@ public class ShooterSubsystem implements Subsystem {
         double flywheelMotorRPS = flywheelRPSTable.get(distance);
 
         Translation3d virtualTarget = calculateVirtualTargetPosition(
-            targetPosition, launchPosition, fieldRelativeSpeeds);
+            targetPosition, launchPosition, fieldRelativeSpeeds, robotPose.getRotation().getRadians());
 
         // Turret: field-relative angle to virtual target, converted to robot-relative
         double dx = virtualTarget.getX() - launchPosition.getX();

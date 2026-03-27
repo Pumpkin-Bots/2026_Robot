@@ -121,6 +121,25 @@ public final class Constants {
         public static final int TURRET_INDEXER_ID = 28;
 
         public static final double TURRET_INDEXER_SPEED = .65; // 60%
+
+        // Indexer spin compensation constants.
+        // The turret indexer imparts spin on the ball that causes trajectory error
+        // depending on the turret's angle relative to the robot.
+        //
+        // INDEXER_SPIN_FORWARD_BACK_MAX_MS: maximum extra effective velocity (m/s)
+        //   along the barrel axis (forward = ball goes long, backward = ball goes short).
+        //   Scales as cos(turretAngle): full effect at 0°/180°, zero at 90°/270°.
+        //
+        // INDEXER_SPIN_LEFT_RIGHT_MAX_MS: maximum extra effective velocity (m/s)
+        //   perpendicular to the barrel axis from the turret's perspective
+        //   (positive = ball drifts left of target, negative = right of target).
+        //   Scales as sin(turretAngle): full effect at 90°/270°, zero at 0°/180°.
+        //
+        // Both values are multiplied by flight time inside the virtual target loop
+        // to offset the aim point and correct for spin-induced trajectory error.
+        // TODO: tune empirically from test shots.
+        public static final double INDEXER_SPIN_FORWARD_BACK_MAX_MS = 0.2;
+        public static final double INDEXER_SPIN_LEFT_RIGHT_MAX_MS   = 0.2;
     }
 
     public static final class GroundIntakeConstants {
@@ -151,14 +170,14 @@ public final class Constants {
 
         // DOWN position: intake deployed, resting on the lower hard stop.
         //   If the arm is 20° below horizontal, this is -20/360 = -0.0556
-        public static final double PIVOT_DOWN_ROTATIONS = 0.37; // 0.35 mechanism rot × 10:1 gear ratio = 3.5 rotor rotations
+        public static final double PIVOT_DOWN_ROTATIONS = 0.35; // 0.35 mechanism rot × 10:1 gear ratio = 3.5 rotor rotations
 
         // ---- Motion Magic profile ----
         // Cruise velocity: max mechanism speed during a move (rotations/second).
         public static final double PIVOT_CRUISE_VELOCITY_RPS = 1.0;
 
         // Acceleration: how fast to ramp up to cruise velocity (rotations/second²).
-        public static final double PIVOT_ACCELERATION_RPS2 = 1.0;
+        public static final double PIVOT_ACCELERATION_RPS2 = 2.0;
 
         // Jerk: limits rate of acceleration change (rotations/second³). 0 = disabled.
         public static final double PIVOT_JERK_RPS3 = 0.0;
