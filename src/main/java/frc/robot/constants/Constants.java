@@ -36,6 +36,9 @@ public final class Constants {
         public static final double ROTATOR_KP = 12; // optimal is 12, but too violent, need stronger wiring chain.
         public static final double ROTATOR_KI = 0.0;
         public static final double ROTATOR_KD = 0.35;
+        // Velocity feedforward for turret omega tracking (V·s/rot, motor units).
+        // Start at 0 (disabled), increment by ~0.05 until turret tracks robot rotation smoothly.
+        public static final double ROTATOR_KV = 0.0;
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
@@ -67,9 +70,12 @@ public final class Constants {
         public static final double FLYWHEEL_EFFECTIVE_DIAMETER_METERS = 0.0762;
 
         // Ball launch position relative to robot center
-        // X: forward offset (meters), Z: height above floor (meters)
+        // X: forward offset (meters, positive = toward robot front)
+        // Y: lateral offset (meters, positive = toward robot left)
+        // Z: height above floor (meters)
         // TODO: measure from CAD or physical robot
         public static final double BALL_LAUNCH_FRONT_OFFSET_METERS = -0.2159;
+        public static final double BALL_LAUNCH_LATERAL_OFFSET_METERS = 0.0;
         public static final double BALL_LAUNCH_HEIGHT_METERS = 0.4826;
 
         // Field-relative 3D position of the shooting target (AprilTag 26)

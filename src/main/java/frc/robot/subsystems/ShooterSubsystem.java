@@ -30,7 +30,8 @@ public class ShooterSubsystem implements Subsystem {
     private static final Slot0Configs turretRotatorGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.ROTATOR_KP)
         .withKI(Constants.ShooterConstants.ROTATOR_KI)
-        .withKD(Constants.ShooterConstants.ROTATOR_KD);
+        .withKD(Constants.ShooterConstants.ROTATOR_KD)
+        .withKV(Constants.ShooterConstants.ROTATOR_KV);
 
     private static final Slot0Configs rackGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.RACK_KP)
@@ -167,13 +168,15 @@ public class ShooterSubsystem implements Subsystem {
 
     /**
      * Computes the ball's launch position in field coordinates,
-     * accounting for the robot's heading and the forward/height offset from center.
+     * accounting for the robot's heading and the forward/lateral/height offset from center.
      */
     private Translation3d calculateLaunchPosition(Pose2d robotPose) {
         double heading = robotPose.getRotation().getRadians();
+        double rx = Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS;
+        double ry = Constants.ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS;
         return new Translation3d(
-            robotPose.getX() + Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS * Math.cos(heading),
-            robotPose.getY() + Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS * Math.sin(heading),
+            robotPose.getX() + rx * Math.cos(heading) - ry * Math.sin(heading),
+            robotPose.getY() + rx * Math.sin(heading) + ry * Math.cos(heading),
             Constants.ShooterConstants.BALL_LAUNCH_HEIGHT_METERS);
     }
 
@@ -181,6 +184,15 @@ public class ShooterSubsystem implements Subsystem {
      * Computes a virtual target position that compensates for robot motion and
      * turret-indexer spin during projectile flight time. Uses iterative refinement
      * with flight time from the empirical lookup table.
+     *
+     * <p>Because the turret is off-center, robot rotation adds a linear velocity
+     * component at the launch point. The full launch-point velocity is:
+     * <pre>
+     *   v_launch_x = v_robot_x + (-rx·sin(θ) - ry·cos(θ))·ω
+     *   v_launch_y = v_robot_y + ( rx·cos(θ) - ry·sin(θ))·ω
+     * </pre>
+     * where rx/ry are the forward/lateral offsets of the turret from robot center,
+     * θ is the robot heading, and ω is the robot's angular velocity.
      *
      * <p>The indexer imparts spin on the ball that creates an effective extra velocity
      * component. The along-barrel component scales as cos(turretAngle) and the
@@ -190,7 +202,7 @@ public class ShooterSubsystem implements Subsystem {
      *
      * @param targetPosition      field-relative 3D position of the actual target
      * @param launchPosition      field-relative 3D position of the ball at launch
-     * @param fieldRelativeSpeeds robot velocity in field-relative coordinates
+     * @param fieldRelativeSpeeds robot velocity in field-relative coordinates (vx, vy, omega)
      * @param robotHeadingRad     robot heading in radians (field-relative)
      * @return adjusted 3D aim point that accounts for robot drift and spin during flight
      */
@@ -199,6 +211,16 @@ public class ShooterSubsystem implements Subsystem {
             Translation3d launchPosition,
             ChassisSpeeds fieldRelativeSpeeds,
             double robotHeadingRad) {
+        // Compute the launch point's actual field-relative velocity.
+        // Robot rotation adds a linear velocity at the turret because it is off-center.
+        double omega = fieldRelativeSpeeds.omegaRadiansPerSecond;
+        double rx = Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS;
+        double ry = Constants.ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS;
+        double launchVelX = fieldRelativeSpeeds.vxMetersPerSecond
+            + (-rx * Math.sin(robotHeadingRad) - ry * Math.cos(robotHeadingRad)) * omega;
+        double launchVelY = fieldRelativeSpeeds.vyMetersPerSecond
+            + ( rx * Math.cos(robotHeadingRad) - ry * Math.sin(robotHeadingRad)) * omega;
+
         Translation3d virtualTarget = targetPosition;
         for (int i = 0; i < 10; i++) {
             double dx = virtualTarget.getX() - launchPosition.getX();
@@ -224,14 +246,14 @@ public class ShooterSubsystem implements Subsystem {
             double leftX   = -Math.sin(barrelAngleRad);
             double leftY   =  Math.cos(barrelAngleRad);
 
-            // Shift virtual target opposite to spin drift, plus robot-motion compensation
+            // Shift virtual target opposite to launch-point velocity and spin drift
             virtualTarget = new Translation3d(
                 targetPosition.getX()
-                    - fieldRelativeSpeeds.vxMetersPerSecond * flightTime
+                    - launchVelX * flightTime
                     - spinAlongBarrel  * barrelX
                     - spinLeftOfBarrel * leftX,
                 targetPosition.getY()
-                    - fieldRelativeSpeeds.vyMetersPerSecond * flightTime
+                    - launchVelY * flightTime
                     - spinAlongBarrel  * barrelY
                     - spinLeftOfBarrel * leftY,
                 targetPosition.getZ());
@@ -354,9 +376,19 @@ public class ShooterSubsystem implements Subsystem {
         m_turretRotatorMotor.setControl(new PositionVoltage(position));
     }
 
-    /** Sets turret rotator position from a target angle in degrees. */
+    /**
+     * Sets turret rotator position from a target angle in degrees, with omega feedforward.
+     * When the robot is rotating, the turret must counter-rotate to stay field-locked.
+     * The velocity feedforward (kV × motorVelRps) pre-applies voltage to overcome friction
+     * and inertia before the PID error has time to build up.
+     */
     public void setTurretRotatorAngle(double angleDeg) {
-        setTurretRotatorPosition(angleToTurretPosition(angleDeg));
+        double position = angleToTurretPosition(angleDeg);
+        // Counter-rotation: turret must spin at -omega to maintain field-relative aim.
+        // Convert rad/s → turret rot/s → motor rot/s (gear ratio is negative, so signs cancel).
+        double omega = m_drivetrain.getState().Speeds.omegaRadiansPerSecond;
+        double motorVelRps = -omega / (2.0 * Math.PI) / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
+        m_turretRotatorMotor.setControl(new PositionVoltage(position).withVelocity(motorVelRps));
     }
 
     public void setShooterRackPosition(double position) {
