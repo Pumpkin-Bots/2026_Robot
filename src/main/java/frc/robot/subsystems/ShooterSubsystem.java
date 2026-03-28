@@ -175,12 +175,17 @@ public class ShooterSubsystem implements Subsystem {
 
         m_turretRotatorMotor.getConfigurator().apply(turretRotatorGains);
         m_turretRotatorMotor.getConfigurator().apply(turretSoftLimits);
+        m_turretRotatorMotor.getConfigurator().apply(turretCurrentLimits);
+        m_turretRotatorMotor.optimizeBusUtilization(); // closed-loop runs on TalonFX; no readbacks needed
+
         m_shooterRackMotor.getConfigurator().apply(rackGains);
         m_shooterRackMotor.getConfigurator().apply(rackSoftLimits);
+        m_shooterRackMotor.getConfigurator().apply(rackCurrentLimits);
+        m_shooterRackMotor.optimizeBusUtilization();
+
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelGains);
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelCurrentLimits);
-        m_turretRotatorMotor.getConfigurator().apply(turretCurrentLimits);
-        m_shooterRackMotor.getConfigurator().apply(rackCurrentLimits);
+        m_shooterFlywheelMotor.optimizeBusUtilization();
     }
 
     /**

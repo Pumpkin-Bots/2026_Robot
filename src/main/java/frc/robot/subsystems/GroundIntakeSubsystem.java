@@ -88,6 +88,9 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_leftPivotMotor.getConfigurator().apply(kPivotMotionMagic);
         m_leftPivotMotor.getConfigurator().apply(kPivotFeedback);
         m_leftPivotMotor.getConfigurator().apply(kPivotCurrentLimits);
+        // Register only the position signal we actually read, then silence everything else.
+        m_leftPivotMotor.getPosition().setUpdateFrequency(50);
+        m_leftPivotMotor.optimizeBusUtilization();
 
         // Right motor mirrors the left; configure it identically then set as follower.
         m_rightPivotMotor.getConfigurator().apply(kPivotGains);
@@ -95,10 +98,16 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rightPivotMotor.getConfigurator().apply(kPivotFeedback);
         m_rightPivotMotor.getConfigurator().apply(kPivotCurrentLimits);
         m_rightPivotMotor.setControl(m_rightPivotFollower);
+        m_rightPivotMotor.optimizeBusUtilization(); // follower — no readbacks needed
 
         m_rollerMotor.getConfigurator().apply(kRollerCurrentLimits);
+        m_rollerMotor.optimizeBusUtilization();
+
         m_leftIndexerMotor.getConfigurator().apply(kIndexerCurrentLimits);
+        m_leftIndexerMotor.optimizeBusUtilization();
+
         m_rightIndexerMotor.getConfigurator().apply(kIndexerCurrentLimits);
+        m_rightIndexerMotor.optimizeBusUtilization();
 
         
 

@@ -26,6 +26,7 @@ public class TurretSubsystem implements Subsystem {
     public TurretSubsystem() {
         m_turretIndexerMotor = new TalonFX(Constants.TurretConstants.TURRET_INDEXER_ID);
         m_turretIndexerMotor.getConfigurator().apply(turretIndexerCurrentLimit);
+        m_turretIndexerMotor.optimizeBusUtilization();
     }
 
     public void setTurretIndexerSpeed(double speed) {
