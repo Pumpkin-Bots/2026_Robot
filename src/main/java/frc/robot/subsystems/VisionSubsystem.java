@@ -175,27 +175,30 @@ public class VisionSubsystem extends SubsystemBase {
         //    }
         //}
      
-        // Use getAllUnreadResults() instead of deprecated getLatestResult()
+        // Drain all buffered results but only process the most recent one.
+        // Processing every buffered frame risks a feedback spiral: an overrun causes
+        // frames to pile up, making the next cycle even slower.
         List<PhotonPipelineResult> results = config.camera.getAllUnreadResults();
+        if (results.isEmpty()) {
+            return;
+        }
+        PhotonPipelineResult result = results.get(results.size() - 1);
 
-        for (PhotonPipelineResult result : results) {
-            // Skip if no targets detected
-            if (!result.hasTargets()) {
-                continue;
-            }
+        // Skip if no targets detected
+        if (!result.hasTargets()) {
+            return;
+        }
 
-            // Try multi-tag pose estimation first (more accurate when multiple tags visible)
-            Optional<EstimatedRobotPose> multiTagPose = config.estimator.estimateCoprocMultiTagPose(result);
+        // Try multi-tag pose estimation first (more accurate when multiple tags visible)
+        Optional<EstimatedRobotPose> multiTagPose = config.estimator.estimateCoprocMultiTagPose(result);
 
-            if (multiTagPose.isPresent()) {
-                // Multi-tag estimate available
-                processEstimate(multiTagPose.get(), config.name, estimates);
-            } else {
-                // Fall back to single-tag estimation using lowest ambiguity
-                Optional<EstimatedRobotPose> singleTagPose = config.estimator.estimateLowestAmbiguityPose(result);
-                if (singleTagPose.isPresent()) {
-                    processEstimate(singleTagPose.get(), config.name, estimates);
-                }
+        if (multiTagPose.isPresent()) {
+            processEstimate(multiTagPose.get(), config.name, estimates);
+        } else {
+            // Fall back to single-tag estimation using lowest ambiguity
+            Optional<EstimatedRobotPose> singleTagPose = config.estimator.estimateLowestAmbiguityPose(result);
+            if (singleTagPose.isPresent()) {
+                processEstimate(singleTagPose.get(), config.name, estimates);
             }
         }
     }
