@@ -128,18 +128,18 @@ public class ShooterSubsystem implements Subsystem {
         flywheelRPSTable.put(3.5, 33.75);
         flywheelRPSTable.put(4.4, 33.75);
         flywheelRPSTable.put(5.0, 34.0);
-                // Above 5 m: physics-derived at ~80% flywheel efficiency.
-        // v0_req = d / (sin(rack) * t); RPS = v0_req / (0.80 * pi * 0.0762)
-        flywheelRPSTable.put(6.0, 44.0);
-        flywheelRPSTable.put(7.0, 47.0);
-        flywheelRPSTable.put(8.0, 50.0);
-        flywheelRPSTable.put(9.0, 52.5);
-        flywheelRPSTable.put(10.0, 55.0);
-        flywheelRPSTable.put(11.0, 57.5);
-        flywheelRPSTable.put(12.0, 59.5);
-        flywheelRPSTable.put(13.0, 62.0);
-        flywheelRPSTable.put(14.0, 64.0);
-        flywheelRPSTable.put(15.0, 66.0);
+        // Above 5 m: recalculated using v0 = d / (sin(rack) * t), empirical factor ~0.225 m/s per RPS
+        // (derived from near-range test data; original 0.80*pi*0.0762 factor caused overshooting)
+        flywheelRPSTable.put(6.0, 38.0);
+        flywheelRPSTable.put(7.0, 40.0);
+        flywheelRPSTable.put(8.0, 42.5);
+        flywheelRPSTable.put(9.0, 45.0);
+        flywheelRPSTable.put(10.0, 47.0);
+        flywheelRPSTable.put(11.0, 49.0);
+        flywheelRPSTable.put(12.0, 51.0);
+        flywheelRPSTable.put(13.0, 53.0);
+        flywheelRPSTable.put(14.0, 54.5);
+        flywheelRPSTable.put(15.0, 56.0);
 
         // Physics-based flight times: t = sqrt(2 * (d*tan(launch) - Δh) / g)
         // where launch = 90° - rack_angle (rack measured from vertical; rack=0° = horizontal).
