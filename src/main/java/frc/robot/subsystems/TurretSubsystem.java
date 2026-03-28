@@ -1,5 +1,6 @@
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionVoltage;
@@ -14,9 +15,17 @@ public class TurretSubsystem implements Subsystem {
 
     private final TalonFX m_turretIndexerMotor;
 
+    private static final CurrentLimitsConfigs turretIndexerCurrentLimit = new CurrentLimitsConfigs()
+        .withSupplyCurrentLimitEnable(true)
+        .withSupplyCurrentLimit(20)
+        .withStatorCurrentLimitEnable(true)
+        .withStatorCurrentLimit(30);
+
+
     /** Creates a new TurretSubsystem. */
     public TurretSubsystem() {
         m_turretIndexerMotor = new TalonFX(Constants.TurretConstants.TURRET_INDEXER_ID);
+        m_turretIndexerMotor.getConfigurator().apply(turretIndexerCurrentLimit);
     }
 
     public void setTurretIndexerSpeed(double speed) {

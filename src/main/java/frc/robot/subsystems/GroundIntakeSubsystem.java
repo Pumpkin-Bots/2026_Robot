@@ -61,15 +61,21 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     private static final CurrentLimitsConfigs kPivotCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(40);
+        .withSupplyCurrentLimit(40)
+        .withStatorCurrentLimitEnable(true)
+        .withStatorCurrentLimit(60);
 
     private static final CurrentLimitsConfigs kRollerCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(40);
+        .withSupplyCurrentLimit(40)
+        .withStatorCurrentLimitEnable(true)
+        .withStatorCurrentLimit(50);
 
     private static final CurrentLimitsConfigs kIndexerCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(30);
+        .withSupplyCurrentLimit(20)
+        .withStatorCurrentLimitEnable(true)
+        .withStatorCurrentLimit(30);
 
     public GroundIntakeSubsystem() {
         m_leftPivotMotor  = new TalonFX(Constants.GroundIntakeConstants.LEFT_PIVOT_ID);

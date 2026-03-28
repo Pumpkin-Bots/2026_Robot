@@ -50,7 +50,9 @@ public class TrenchMode extends Command {
         m_Shooter.aimTurretAt(targetPosition);
         m_Shooter.setShooterRackAngle(20);
         m_Shooter.setShooterFlywheelVelocity(0);
-        if (m_timer.has)
+        if (m_timer.hasElapsed(0.75)){
+            m_GroundIntake.neutralMode();
+        }
     }
 
     @Override

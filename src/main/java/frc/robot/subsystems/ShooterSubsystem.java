@@ -70,7 +70,21 @@ public class ShooterSubsystem implements Subsystem {
 
     private static final CurrentLimitsConfigs flywheelCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(40);
+        .withSupplyCurrentLimit(40)
+        .withStatorCurrentLimitEnable(true)
+        .withStatorCurrentLimit(70);
+
+    private static final CurrentLimitsConfigs rackCurrentLimits = new CurrentLimitsConfigs()
+        .withSupplyCurrentLimitEnable(true)
+        .withSupplyCurrentLimit(20)
+        .withStatorCurrentLimitEnable(true)
+        .withStatorCurrentLimit(30);
+
+    private static final CurrentLimitsConfigs turretCurrentLimits = new CurrentLimitsConfigs()
+        .withSupplyCurrentLimitEnable(true)
+        .withSupplyCurrentLimit(20)
+        .withStatorCurrentLimitEnable(true)
+        .withStatorCurrentLimit(30);
 
     // Lookup tables: distance (meters) → value. Populate with empirical test shots.
     private static final InterpolatingDoubleTreeMap rackAngleTable = new InterpolatingDoubleTreeMap();
@@ -165,6 +179,8 @@ public class ShooterSubsystem implements Subsystem {
         m_shooterRackMotor.getConfigurator().apply(rackSoftLimits);
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelGains);
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelCurrentLimits);
+        m_turretRotatorMotor.getConfigurator().apply(turretCurrentLimits);
+        m_shooterRackMotor.getConfigurator().apply(rackCurrentLimits);
     }
 
     /**
