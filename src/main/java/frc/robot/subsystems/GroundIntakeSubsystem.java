@@ -61,11 +61,15 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     private static final CurrentLimitsConfigs kPivotCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(80);
+        .withSupplyCurrentLimit(40);
 
     private static final CurrentLimitsConfigs kRollerCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
         .withSupplyCurrentLimit(40);
+
+    private static final CurrentLimitsConfigs kIndexerCurrentLimits = new CurrentLimitsConfigs()
+        .withSupplyCurrentLimitEnable(true)
+        .withSupplyCurrentLimit(30);
 
     public GroundIntakeSubsystem() {
         m_leftPivotMotor  = new TalonFX(Constants.GroundIntakeConstants.LEFT_PIVOT_ID);
@@ -87,6 +91,10 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rightPivotMotor.setControl(m_rightPivotFollower);
 
         m_rollerMotor.getConfigurator().apply(kRollerCurrentLimits);
+        m_leftIndexerMotor.getConfigurator().apply(kIndexerCurrentLimits);
+        m_rightIndexerMotor.getConfigurator().apply(kIndexerCurrentLimits);
+
+        
 
         // Seed the encoder immediately, assuming the robot always starts with
         // the intake resting on the UP hard stop. Phoenix 6 resets rotor position
@@ -136,6 +144,11 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     public void setRollerSpeed(double speed) {
         m_rollerMotor.set(speed);
+    }
+
+    public void neutralMode(){
+        m_leftPivotMotor.setControl(new NeutralOut());
+        m_rightPivotMotor.setControl(new NeutralOut());
     }
 
     public void setLeftIndexerMotorSpeed(double speed) {

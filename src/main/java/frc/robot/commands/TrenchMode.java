@@ -8,21 +8,28 @@ import frc.robot.constants.Constants;
 import frc.robot.subsystems.GroundIntakeSubsystem;
 import frc.robot.subsystems.TurretSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
+import edu.wpi.first.wpilibj.Timer;
 
 public class TrenchMode extends Command {
     private final GroundIntakeSubsystem m_GroundIntake;
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
+    private final Timer m_timer = new Timer();
+
 
     public TrenchMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
         m_GroundIntake = groundIntake;
         m_Turret = turret;
         m_Shooter = shooter;
+
         addRequirements(m_GroundIntake, m_Turret, m_Shooter);
+
     }
 
     @Override
     public void initialize() {
+        m_timer.restart();
+        m_timer.start();
         m_GroundIntake.setPivotPosition(Constants.GroundIntakeConstants.TRENCH_POSITION);
     }
 
@@ -43,6 +50,7 @@ public class TrenchMode extends Command {
         m_Shooter.aimTurretAt(targetPosition);
         m_Shooter.setShooterRackAngle(20);
         m_Shooter.setShooterFlywheelVelocity(0);
+        if (m_timer.has)
     }
 
     @Override

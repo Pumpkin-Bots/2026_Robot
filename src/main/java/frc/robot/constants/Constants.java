@@ -23,8 +23,8 @@ public final class Constants {
         public static final double NORMAL_MAX_ANGULAR_RATE_MULTIPLIER = 1.0;
 
         // Shooter mode speeds (reduced for precise positioning)
-        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 0.5; // 50% of max speed
-        public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 0.5; // 50% of max rotation speed
+        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 1; // 50% of max speed
+        public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 1; // 50% of max rotation speed
     }
 
     public static final class ShooterConstants{
@@ -176,7 +176,7 @@ public final class Constants {
 
         // DOWN position: intake deployed, resting on the lower hard stop.
         //   If the arm is 20° below horizontal, this is -20/360 = -0.0556
-        public static final double PIVOT_DOWN_ROTATIONS = 0.35; // 0.35 mechanism rot × 10:1 gear ratio = 3.5 rotor rotations
+        public static final double PIVOT_DOWN_ROTATIONS = 0.33; // 0.35 mechanism rot × 10:1 gear ratio = 3.5 rotor rotations
 
         // ---- Motion Magic profile ----
         // Cruise velocity: max mechanism speed during a move (rotations/second).

@@ -15,7 +15,7 @@ public class ShooterMode extends Command {
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
     private final Timer m_timer = new Timer();
-
+    
     public ShooterMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
         m_GroundIntake = groundIntake;
         m_Turret = turret;
@@ -46,6 +46,7 @@ public class ShooterMode extends Command {
             m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
             m_GroundIntake.setLeftIndexerMotorSpeed(Constants.GroundIntakeConstants.LEFT_INDEXER_SPEED);
             m_GroundIntake.setRightIndexerMotorSpeed(Constants.GroundIntakeConstants.RIGHT_INDEXER_SPEED);
+            m_GroundIntake.neutralMode();
         }
     }
 

@@ -90,6 +90,7 @@ public class ShooterSubsystem implements Subsystem {
         rackAngleTable.put(3.7211, 23.0);
         rackAngleTable.put(4.0767, 27.0);
         rackAngleTable.put(4.4, 29.0);
+        rackAngleTable.put(5.0, 29.0);
         // Above 5 m: 1-meter intervals. Angle approaches hardware max (42°) by 8 m.
         // launch_angle = 90° - rack_angle; higher rack = flatter shot, lower rack = steeper lob.
         rackAngleTable.put(6.0, 38.0);
@@ -112,8 +113,8 @@ public class ShooterSubsystem implements Subsystem {
         flywheelRPSTable.put(3.0, 33.75);
         flywheelRPSTable.put(3.5, 33.75);
         flywheelRPSTable.put(4.4, 33.75);
-        flywheelRPSTable.put(5.0, 38.0);
-        // Above 5 m: physics-derived at ~80% flywheel efficiency.
+        flywheelRPSTable.put(5.0, 34.0);
+                // Above 5 m: physics-derived at ~80% flywheel efficiency.
         // v0_req = d / (sin(rack) * t); RPS = v0_req / (0.80 * pi * 0.0762)
         flywheelRPSTable.put(6.0, 44.0);
         flywheelRPSTable.put(7.0, 47.0);

@@ -3,6 +3,7 @@ package frc.robot.commands;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.wpilibj.DriverStation;
 import edu.wpi.first.wpilibj.DriverStation.Alliance;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.constants.Constants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
@@ -15,18 +16,24 @@ public class ShuttleMode extends Command {
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
     private final CommandSwerveDrivetrain m_Drivetrain;
+    private final Timer m_timer = new Timer();
 
     public ShuttleMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter, CommandSwerveDrivetrain drivetrain) {
         m_GroundIntake = groundIntake;
         m_Turret = turret;
         m_Shooter = shooter;
         m_Drivetrain = drivetrain;
+        
         addRequirements(m_GroundIntake, m_Turret, m_Shooter);
     }
 
     @Override
     public void initialize() {
+
+        
         m_GroundIntake.setPivotPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
+        m_timer.restart();
+        m_timer.start();
     }
 
     @Override
@@ -57,6 +64,9 @@ public class ShuttleMode extends Command {
 
         Translation3d targetPosition = new Translation3d(targetX, targetY, targetZ);
         m_Shooter.calculateShooterActions(targetPosition);
+        if (m_timer.hasElapsed(0.75)) {
+            m_GroundIntake.neutralMode();
+        }
     }
 
     @Override
