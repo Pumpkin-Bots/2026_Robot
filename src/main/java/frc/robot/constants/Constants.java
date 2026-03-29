@@ -23,7 +23,7 @@ public final class Constants {
         public static final double NORMAL_MAX_ANGULAR_RATE_MULTIPLIER = 1.0;
 
         // Shooter mode speeds (reduced for precise positioning)
-        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 1; // 50% of max speed
+        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 0.5; // 50% of max speed
         public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 1; // 50% of max rotation speed
     }
 
@@ -162,7 +162,7 @@ public final class Constants {
         // Example: if the pivot has a 100:1 gearbox, this is 100.0.
         // Used by Phoenix 6 SensorToMechanismRatio so all positions below are in
         // mechanism rotations (i.e. 0.25 = 90°), not raw rotor counts.
-        public static final double PIVOT_GEAR_RATIO = 10.0; // 10 rotor rotations per 1 arm rotation
+        public static final double PIVOT_GEAR_RATIO = 18.0; // 10 rotor rotations per 1 arm rotation
 
         // ---- Pivot target positions (mechanism rotations, 1.0 = full 360°) ----
         // ZERO CONVENTION: 0.0 mechanism rotations = arm horizontal (pointing straight out).
@@ -176,7 +176,7 @@ public final class Constants {
 
         // DOWN position: intake deployed, resting on the lower hard stop.
         //   If the arm is 20° below horizontal, this is -20/360 = -0.0556
-        public static final double PIVOT_DOWN_ROTATIONS = 0.33; // 0.35 mechanism rot × 10:1 gear ratio = 3.5 rotor rotations
+        public static final double PIVOT_DOWN_ROTATIONS = 0.35; // 0.35 mechanism rot × 10:1 gear ratio = 3.5 rotor rotations
 
         // ---- Motion Magic profile ----
         // Cruise velocity: max mechanism speed during a move (rotations/second).
@@ -208,7 +208,7 @@ public final class Constants {
         public static final double SHOOTER_POSITION = PIVOT_DOWN_ROTATIONS; // intake deployed for feeding shooter
 
         // ---- Roller / indexer speeds ----
-        public static final double ROLLER_INTAKE_SPEED = 0.85; // 85% duty cycle
+        public static final double ROLLER_INTAKE_SPEED = 0.95; // 95% duty cycle
         public static final double RIGHT_INDEXER_SPEED = 0.60; // 60% duty cycle
         public static final double LEFT_INDEXER_SPEED = -0.60; // 60% duty cycle
         public static final double ROLLER_JAM_SPEED = -0.2; // 20% duty cycle

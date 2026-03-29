@@ -63,19 +63,19 @@ public class GroundIntakeSubsystem implements Subsystem {
         .withSupplyCurrentLimitEnable(true)
         .withSupplyCurrentLimit(40)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(60);
+        .withStatorCurrentLimit(80);
 
     private static final CurrentLimitsConfigs kRollerCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
         .withSupplyCurrentLimit(40)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(50);
+        .withStatorCurrentLimit(70);
 
     private static final CurrentLimitsConfigs kIndexerCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(20)
+        .withSupplyCurrentLimit(40)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(30);
+        .withStatorCurrentLimit(50);
 
     public GroundIntakeSubsystem() {
         m_leftPivotMotor  = new TalonFX(Constants.GroundIntakeConstants.LEFT_PIVOT_ID);
@@ -88,7 +88,7 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_leftPivotMotor.getConfigurator().apply(kPivotMotionMagic);
         m_leftPivotMotor.getConfigurator().apply(kPivotFeedback);
         m_leftPivotMotor.getConfigurator().apply(kPivotCurrentLimits);
-        // Register only the position signal we actually read, then silence everything else.
+        // Register only the position signal 8we actually read, then silence everything else.
         m_leftPivotMotor.getPosition().setUpdateFrequency(50);
         m_leftPivotMotor.optimizeBusUtilization();
 

@@ -17,9 +17,9 @@ public class TurretSubsystem implements Subsystem {
 
     private static final CurrentLimitsConfigs turretIndexerCurrentLimit = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(20)
+        .withSupplyCurrentLimit(40)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(30);
+        .withStatorCurrentLimit(60);
 
 
     /** Creates a new TurretSubsystem. */

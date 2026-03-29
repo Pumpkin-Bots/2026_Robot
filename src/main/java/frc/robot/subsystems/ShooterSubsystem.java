@@ -72,19 +72,19 @@ public class ShooterSubsystem implements Subsystem {
         .withSupplyCurrentLimitEnable(true)
         .withSupplyCurrentLimit(40)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(70);
+        .withStatorCurrentLimit(80);
 
     private static final CurrentLimitsConfigs rackCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(20)
+        .withSupplyCurrentLimit(25)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(30);
+        .withStatorCurrentLimit(35);
 
     private static final CurrentLimitsConfigs turretCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(20)
+        .withSupplyCurrentLimit(35)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(30);
+        .withStatorCurrentLimit(45);
 
     // Lookup tables: distance (meters) → value. Populate with empirical test shots.
     private static final InterpolatingDoubleTreeMap rackAngleTable = new InterpolatingDoubleTreeMap();
@@ -103,11 +103,11 @@ public class ShooterSubsystem implements Subsystem {
         rackAngleTable.put(3.0099, 19.0);
         rackAngleTable.put(3.7211, 23.0);
         rackAngleTable.put(4.0767, 27.0);
-        rackAngleTable.put(4.4, 29.0);
-        rackAngleTable.put(5.0, 29.0);
+        rackAngleTable.put(4.4, 28.0);
+        rackAngleTable.put(5.0, 28.0);
         // Above 5 m: 1-meter intervals. Angle approaches hardware max (42°) by 8 m.
         // launch_angle = 90° - rack_angle; higher rack = flatter shot, lower rack = steeper lob.
-        rackAngleTable.put(6.0, 38.0);
+        rackAngleTable.put(6.0, 31.0);
         rackAngleTable.put(7.0, 41.0);
         rackAngleTable.put(8.0, 42.0);
         rackAngleTable.put(9.0, 42.0);
@@ -130,7 +130,7 @@ public class ShooterSubsystem implements Subsystem {
         flywheelRPSTable.put(5.0, 34.0);
         // Above 5 m: recalculated using v0 = d / (sin(rack) * t), empirical factor ~0.225 m/s per RPS
         // (derived from near-range test data; original 0.80*pi*0.0762 factor caused overshooting)
-        flywheelRPSTable.put(6.0, 38.0);
+        flywheelRPSTable.put(6.0, 35.0);
         flywheelRPSTable.put(7.0, 40.0);
         flywheelRPSTable.put(8.0, 42.5);
         flywheelRPSTable.put(9.0, 45.0);
