@@ -144,8 +144,8 @@ public final class Constants {
         // Both values are multiplied by flight time inside the virtual target loop
         // to offset the aim point and correct for spin-induced trajectory error.
         // TODO: tune empirically from test shots.
-        public static final double INDEXER_SPIN_FORWARD_BACK_MAX_MS = 0.2;
-        public static final double INDEXER_SPIN_LEFT_RIGHT_MAX_MS   = 0.2;
+        public static final double INDEXER_SPIN_FORWARD_BACK_MAX_MS = 0.85;
+        public static final double INDEXER_SPIN_LEFT_RIGHT_MAX_MS   = 0.25;
     }
 
     public static final class GroundIntakeConstants {
@@ -209,8 +209,8 @@ public final class Constants {
 
         // ---- Roller / indexer speeds ----
         public static final double ROLLER_INTAKE_SPEED = 0.95; // 95% duty cycle
-        public static final double RIGHT_INDEXER_SPEED = 0.60; // 60% duty cycle
-        public static final double LEFT_INDEXER_SPEED = -0.60; // 60% duty cycle
+        public static final double RIGHT_INDEXER_SPEED = 0.75; // 60% duty cycle
+        public static final double LEFT_INDEXER_SPEED = -0.75; // 60% duty cycle
         public static final double ROLLER_JAM_SPEED = -0.2; // 20% duty cycle
 
         // ---- Position tolerance ----
@@ -261,7 +261,7 @@ public final class Constants {
         public static final Matrix<N3, N1> SINGLE_TAG_STD_DEVS = VecBuilder.fill(4.0, 4.0, 8.0);
         public static final Matrix<N3, N1> MULTI_TAG_STD_DEVS  = VecBuilder.fill(0.5, 0.5, 1.0);
 
-        public static final double MAX_TAG_DISTANCE_METERS = 5.0;
+        public static final double MAX_TAG_DISTANCE_METERS = 6.0;
         public static final double MAX_POSE_AMBIGUITY      = 0.2;
         public static final int    MIN_TAGS_FOR_MULTI_TAG  = 2;
     }

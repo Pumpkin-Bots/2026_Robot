@@ -23,7 +23,6 @@ import edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj.util.Color;
 import edu.wpi.first.wpilibj.util.Color8Bit;
-
 import frc.robot.subsystems.VisionSubsystem.VisionPoseEstimate;
 
 public class Telemetry {
@@ -36,6 +35,8 @@ public class Telemetry {
      */
     public Telemetry(double maxSpeed) {
         MaxSpeed = maxSpeed;
+        // Set the logger to log to the first flashdrive plugged in
+        SignalLogger.setPath("/media/sda1/");   
         SignalLogger.start();
 
         /* Set up the module state Mechanism2d telemetry */
@@ -66,8 +67,8 @@ public class Telemetry {
     private final NetworkTable visionTable = inst.getTable("Vision");
     private final BooleanPublisher backLeftConnected = visionTable.getBooleanTopic("BackLeftConnected").publish();
     private final BooleanPublisher backRightConnected = visionTable.getBooleanTopic("BackRightConnected").publish();
-    private final BooleanPublisher intakeRightConnected = visionTable.getBooleanTopic("IntakeRightConnected").publish();
-    private final BooleanPublisher intakeLeftConnected = visionTable.getBooleanTopic("IntakeLeftConnected").publish();
+    private final BooleanPublisher frontRightConnected = visionTable.getBooleanTopic("FrontRightConnected").publish();
+    private final BooleanPublisher frontLeftConnected = visionTable.getBooleanTopic("FrontLeftConnected").publish();
     private final IntegerPublisher totalTagsDetected = visionTable.getIntegerTopic("TotalTagsDetected").publish();
     private final StructArrayPublisher<Pose2d> visionPoses = visionTable.getStructArrayTopic("EstimatedPoses", Pose2d.struct).publish();
     private final DoublePublisher avgTagDistance = visionTable.getDoubleTopic("AvgTagDistance").publish();
@@ -129,11 +130,11 @@ public class Telemetry {
         fieldPub.set(m_poseArray);
 
         // Print robot pose to console once per second
-        if (state.Timestamp - lastPosePrintTime >= 1.0) {
-            System.out.printf("Pose: X=%.2f Y=%.2f Rot=%.1f%n",
-                state.Pose.getX(), state.Pose.getY(), state.Pose.getRotation().getDegrees());
-            lastPosePrintTime = state.Timestamp;
-        }
+        //if (state.Timestamp - lastPosePrintTime >= 1.0) {
+        //    System.out.printf("Pose: X=%.2f Y=%.2f Rot=%.1f%n",
+        //        state.Pose.getX(), state.Pose.getY(), state.Pose.getRotation().getDegrees());
+        //    lastPosePrintTime = state.Timestamp;
+        //}
 
         /* Telemeterize each module state to a Mechanism2d */
         for (int i = 0; i < 4; ++i) {
@@ -149,15 +150,15 @@ public class Telemetry {
      * @param estimates List of vision pose estimates from cameras
      * @param backLeftCamConnected Whether the back left camera is connected
      * @param backRightCamConnected Whether the back right camera is connected
-     * @param intakeRightCamConnected Whether the intake right camera is connected
-     * @param intakeLeftCamConnected Whether the intake left camera is connected
+     * @param frontRightCamConnected Whether the front right camera is connected
+     * @param frontLeftCamConnected Whether the front left camera is connected
      */
-    public void updateVision(List<VisionPoseEstimate> estimates, boolean backLeftCamConnected, boolean backRightCamConnected, boolean intakeRightCamConnected, boolean intakeLeftCamConnected) {
+    public void updateVision(List<VisionPoseEstimate> estimates, boolean backLeftCamConnected, boolean backRightCamConnected, boolean frontRightCamConnected, boolean frontLeftCamConnected) {
         // Publish camera connection status
         backLeftConnected.set(backLeftCamConnected);
         backRightConnected.set(backRightCamConnected);
-        intakeRightConnected.set(intakeRightCamConnected);
-        intakeLeftConnected.set(intakeLeftCamConnected);
+        frontRightConnected.set(frontRightCamConnected);
+        frontLeftConnected.set(frontLeftCamConnected);
 
         // Calculate totals from estimates
         int totalTags = 0;
@@ -179,8 +180,8 @@ public class Telemetry {
         // Log to SignalLogger
         SignalLogger.writeBoolean("Vision/BackLeftConnected", backLeftCamConnected);
         SignalLogger.writeBoolean("Vision/BackRightConnected", backRightCamConnected);
-        SignalLogger.writeBoolean("Vision/IntakeRightConnected", intakeRightCamConnected);
-        SignalLogger.writeBoolean("Vision/IntakeLeftConnected", intakeLeftCamConnected);
+        SignalLogger.writeBoolean("Vision/FrontRightConnected", frontRightCamConnected);
+        SignalLogger.writeBoolean("Vision/FrontLeftConnected", frontLeftCamConnected);
         SignalLogger.writeInteger("Vision/TotalTagsDetected", totalTags, "tags");
         SignalLogger.writeDouble("Vision/AvgTagDistance", totalTags > 0 ? totalDistance / totalTags : 0.0, "meters");
 

@@ -108,38 +108,38 @@ public class ShooterSubsystem implements Subsystem {
         // Above 5 m: 1-meter intervals. Angle approaches hardware max (42°) by 8 m.
         // launch_angle = 90° - rack_angle; higher rack = flatter shot, lower rack = steeper lob.
         rackAngleTable.put(6.0, 31.0);
-        rackAngleTable.put(7.0, 41.0);
-        rackAngleTable.put(8.0, 42.0);
-        rackAngleTable.put(9.0, 42.0);
-        rackAngleTable.put(10.0, 42.0);
-        rackAngleTable.put(11.0, 42.0);
-        rackAngleTable.put(12.0, 42.0);
-        rackAngleTable.put(13.0, 42.0);
-        rackAngleTable.put(14.0, 42.0);
-        rackAngleTable.put(15.0, 42.0);
+        rackAngleTable.put(7.0, 31.0);
+        rackAngleTable.put(8.0, 32.0);
+        rackAngleTable.put(9.0, 32.0);
+        rackAngleTable.put(10.0,32.0);
+        rackAngleTable.put(11.0, 32.0);
+        rackAngleTable.put(12.0, 32.0);
+        rackAngleTable.put(13.0, 32.0);
+        rackAngleTable.put(14.0, 32.0);
+        rackAngleTable.put(15.0, 32.0);
 
 
         // TODO: Fill in from test shots — put(distance_meters, flywheel_motor_RPS)
-        flywheelRPSTable.put(1.3589, 27.0);
-        flywheelRPSTable.put(1.7018, 26.0);
-        flywheelRPSTable.put(2.10, 29.0);
-        flywheelRPSTable.put(2.3495, 32.0);
-        flywheelRPSTable.put(3.0, 33.75);
-        flywheelRPSTable.put(3.5, 33.75);
-        flywheelRPSTable.put(4.4, 33.75);
-        flywheelRPSTable.put(5.0, 34.0);
+        flywheelRPSTable.put(1.3589, 37.0);
+        flywheelRPSTable.put(1.7018, 36.0);
+        flywheelRPSTable.put(2.10, 39.0);
+        flywheelRPSTable.put(2.3495, 40.0);
+        flywheelRPSTable.put(3.0, 40.75);
+        flywheelRPSTable.put(3.5, 40.75);
+        flywheelRPSTable.put(4.4, 44.5);
+        flywheelRPSTable.put(5.0, 52.5);
         // Above 5 m: recalculated using v0 = d / (sin(rack) * t), empirical factor ~0.225 m/s per RPS
         // (derived from near-range test data; original 0.80*pi*0.0762 factor caused overshooting)
-        flywheelRPSTable.put(6.0, 35.0);
-        flywheelRPSTable.put(7.0, 40.0);
-        flywheelRPSTable.put(8.0, 42.5);
-        flywheelRPSTable.put(9.0, 45.0);
-        flywheelRPSTable.put(10.0, 47.0);
-        flywheelRPSTable.put(11.0, 49.0);
-        flywheelRPSTable.put(12.0, 51.0);
-        flywheelRPSTable.put(13.0, 53.0);
-        flywheelRPSTable.put(14.0, 54.5);
-        flywheelRPSTable.put(15.0, 56.0);
+        flywheelRPSTable.put(6.0, 57.0);
+        flywheelRPSTable.put(7.0, 60.0);
+        flywheelRPSTable.put(8.0, 60.5);
+        flywheelRPSTable.put(9.0, 60.0);
+        flywheelRPSTable.put(10.0, 60.0);
+        flywheelRPSTable.put(11.0, 60.0);
+        flywheelRPSTable.put(12.0, 61.0);
+        flywheelRPSTable.put(13.0, 63.0);
+        flywheelRPSTable.put(14.0, 64.5);
+        flywheelRPSTable.put(15.0, 66.0);
 
         // Physics-based flight times: t = sqrt(2 * (d*tan(launch) - Δh) / g)
         // where launch = 90° - rack_angle (rack measured from vertical; rack=0° = horizontal).
