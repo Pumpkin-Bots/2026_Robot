@@ -166,6 +166,11 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rightPivotMotor.setControl(new NeutralOut());
     }
 
+    public void forceDownMode(){
+        m_leftPivotMotor.set(Constants.GroundIntakeConstants.PIVOT_FORCE_DOWN_POWER);
+        m_rightPivotMotor.set(-Constants.GroundIntakeConstants.PIVOT_FORCE_DOWN_POWER);
+    }
+
     public void setLeftIndexerMotorSpeed(double speed) {
         m_leftIndexerMotor.set(speed);
     }

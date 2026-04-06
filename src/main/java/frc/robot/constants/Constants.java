@@ -38,7 +38,7 @@ public final class Constants {
         public static final double ROTATOR_KD = 0.35;
         // Velocity feedforward for turret omega tracking (V·s/rot, motor units).
         // Start at 0 (disabled), increment by ~0.05 until turret tracks robot rotation smoothly.
-        public static final double ROTATOR_KV = 0.0;
+        public static final double ROTATOR_KV = 0.125;
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
@@ -56,9 +56,10 @@ public final class Constants {
         // MAX Rotations is at maximum height (lower shot)
         // MIN Rotations is at minimum height (higher shot)
 
-        public static final double FLYWHEEL_KP = 0.04;
-        public static final double FLYWHEEL_KI = 0.125;
+        public static final double FLYWHEEL_KP = 0.1;
+        public static final double FLYWHEEL_KI = 0;
         public static final double FLYWHEEL_KD = 0;
+        public static final double FLYWHEEL_KV = 0.13;
 
         public static final double FLYWHEEL_GEAR_RATIO = 1;
         public static final double FLYWHEEL_LARGE_DIAMETER_METERS = 0.1016; // 4 inches
@@ -74,7 +75,7 @@ public final class Constants {
         // Y: lateral offset (meters, positive = toward robot left)
         // Z: height above floor (meters)
         // TODO: measure from CAD or physical robot
-        public static final double BALL_LAUNCH_FRONT_OFFSET_METERS = -0.2159;
+        public static final double BALL_LAUNCH_FRONT_OFFSET_METERS = -0.114;
         public static final double BALL_LAUNCH_LATERAL_OFFSET_METERS = 0.0;
         public static final double BALL_LAUNCH_HEIGHT_METERS = 0.4826;
 
@@ -144,8 +145,8 @@ public final class Constants {
         // Both values are multiplied by flight time inside the virtual target loop
         // to offset the aim point and correct for spin-induced trajectory error.
         // TODO: tune empirically from test shots.
-        public static final double INDEXER_SPIN_FORWARD_BACK_MAX_MS = 0.85;
-        public static final double INDEXER_SPIN_LEFT_RIGHT_MAX_MS   = 0.25;
+        public static final double INDEXER_SPIN_FORWARD_BACK_MAX_MS = 0.45;
+        public static final double INDEXER_SPIN_LEFT_RIGHT_MAX_MS   = 0.15;
     }
 
     public static final class GroundIntakeConstants {
@@ -189,7 +190,7 @@ public final class Constants {
         public static final double PIVOT_JERK_RPS3 = 0.0;
 
         // ---- Pivot PID + feed-forward gains (Slot 0) ----
-        public static final double PIVOT_KP = 50.0;
+        public static final double PIVOT_KP = 30.0;
         public static final double PIVOT_KI = 0.0;
         public static final double PIVOT_KD = 2.0;
         public static final double PIVOT_KS = 0.0;
@@ -216,6 +217,14 @@ public final class Constants {
         // ---- Position tolerance ----
         // How close (in mechanism rotations) counts as "at position".
         public static final double PIVOT_TOLERANCE_ROTATIONS = 0.02; // ~7°
+
+
+        public static final double PIVOT_FORCE_DOWN_POWER = 0.05;
+    }
+
+    public static final class LEDConstants {
+        public static final int CANDLE_ID = 29;
+        public static final int LED_COUNT = 60; // 1m strip at 60 LEDs/m
     }
 
     public static final class VisionConstants {

@@ -46,7 +46,6 @@ public class ShooterMode extends Command {
             m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
             m_GroundIntake.setLeftIndexerMotorSpeed(Constants.GroundIntakeConstants.LEFT_INDEXER_SPEED);
             m_GroundIntake.setRightIndexerMotorSpeed(Constants.GroundIntakeConstants.RIGHT_INDEXER_SPEED);
-            m_GroundIntake.neutralMode();
         }
     }
 

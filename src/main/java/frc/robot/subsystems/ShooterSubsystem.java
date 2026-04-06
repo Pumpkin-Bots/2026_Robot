@@ -7,6 +7,7 @@ import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.StaticBrake;
 import com.ctre.phoenix6.controls.VelocityDutyCycle;
+import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
 
 import edu.wpi.first.math.geometry.Pose2d;
@@ -41,7 +42,8 @@ public class ShooterSubsystem implements Subsystem {
     private static final Slot0Configs flywheelGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.FLYWHEEL_KP)
         .withKI(Constants.ShooterConstants.FLYWHEEL_KI)
-        .withKD(Constants.ShooterConstants.FLYWHEEL_KD);
+        .withKD(Constants.ShooterConstants.FLYWHEEL_KD)
+        .withKV(Constants.ShooterConstants.FLYWHEEL_KV);
 
     // Turret rotator soft limits in motor rotations (0 motor rotations = 0° turret angle)
     private static final double TURRET_MIN_ROTATIONS =
@@ -97,72 +99,71 @@ public class ShooterSubsystem implements Subsystem {
 
     static {
         // TODO: Fill in from test shots — put(distance_meters, rack_angle_deg)
-        rackAngleTable.put(1.3589, 15.0);
-        rackAngleTable.put(1.7018, 15.0);
-        rackAngleTable.put(2.3495, 17.0);
-        rackAngleTable.put(3.0099, 19.0);
-        rackAngleTable.put(3.7211, 23.0);
-        rackAngleTable.put(4.0767, 27.0);
-        rackAngleTable.put(4.4, 28.0);
+        rackAngleTable.put(2.0, 15.0);
+        rackAngleTable.put(2.5, 21.0);
+        rackAngleTable.put(3.0, 24.0);
+        rackAngleTable.put(3.5, 24.0);
+        rackAngleTable.put(4.0, 26.0);
+        rackAngleTable.put(4.5,26.0);
         rackAngleTable.put(5.0, 28.0);
         // Above 5 m: 1-meter intervals. Angle approaches hardware max (42°) by 8 m.
         // launch_angle = 90° - rack_angle; higher rack = flatter shot, lower rack = steeper lob.
-        rackAngleTable.put(6.0, 31.0);
-        rackAngleTable.put(7.0, 31.0);
-        rackAngleTable.put(8.0, 32.0);
-        rackAngleTable.put(9.0, 32.0);
-        rackAngleTable.put(10.0,32.0);
-        rackAngleTable.put(11.0, 32.0);
-        rackAngleTable.put(12.0, 32.0);
-        rackAngleTable.put(13.0, 32.0);
-        rackAngleTable.put(14.0, 32.0);
-        rackAngleTable.put(15.0, 32.0);
-
+        rackAngleTable.put(6.0,  33.0);
+        rackAngleTable.put(6.75, 36.0);
+        // 8 m+: hold at hardware max (42°) for the flattest possible shot
+        rackAngleTable.put(8.0,  42.0);
+        rackAngleTable.put(9.0,  42.0);
+        rackAngleTable.put(10.0, 42.0);
+        rackAngleTable.put(11.0, 42.0);
+        rackAngleTable.put(12.0, 42.0);
+        rackAngleTable.put(13.0, 42.0);
+        rackAngleTable.put(14.0, 42.0);
+        rackAngleTable.put(15.0, 42.0);
 
         // TODO: Fill in from test shots — put(distance_meters, flywheel_motor_RPS)
-        flywheelRPSTable.put(1.3589, 37.0);
-        flywheelRPSTable.put(1.7018, 36.0);
-        flywheelRPSTable.put(2.10, 39.0);
-        flywheelRPSTable.put(2.3495, 40.0);
-        flywheelRPSTable.put(3.0, 40.75);
-        flywheelRPSTable.put(3.5, 40.75);
-        flywheelRPSTable.put(4.4, 44.5);
-        flywheelRPSTable.put(5.0, 52.5);
-        // Above 5 m: recalculated using v0 = d / (sin(rack) * t), empirical factor ~0.225 m/s per RPS
-        // (derived from near-range test data; original 0.80*pi*0.0762 factor caused overshooting)
-        flywheelRPSTable.put(6.0, 57.0);
-        flywheelRPSTable.put(7.0, 60.0);
-        flywheelRPSTable.put(8.0, 60.5);
-        flywheelRPSTable.put(9.0, 60.0);
-        flywheelRPSTable.put(10.0, 60.0);
-        flywheelRPSTable.put(11.0, 60.0);
-        flywheelRPSTable.put(12.0, 61.0);
-        flywheelRPSTable.put(13.0, 63.0);
-        flywheelRPSTable.put(14.0, 64.5);
-        flywheelRPSTable.put(15.0, 66.0);
-
-        // Physics-based flight times: t = sqrt(2 * (d*tan(launch) - Δh) / g)
-        // where launch = 90° - rack_angle (rack measured from vertical; rack=0° = horizontal).
-        // Δh = target_height - launch_height = 1.6764m (5.5 ft) - 0.4826m = 1.1938m.
-        // All shots arc high and descend into the target from above.
-        // TODO: Refine with measured values from slow-motion video or timestamp logging.
+        flywheelRPSTable.put(1.3589, 30.0);
+        flywheelRPSTable.put(1.5, 30.0);
+        flywheelRPSTable.put(2.0, 31.5);
+        flywheelRPSTable.put(2.5, 33.0);
+        flywheelRPSTable.put(3.0, 33.5);
+        flywheelRPSTable.put(3.5, 35.0);
+        flywheelRPSTable.put(4.0, 36.25);
+        flywheelRPSTable.put(4.5, 37.75);
+        flywheelRPSTable.put(5.0, 39.0);
+        flywheelRPSTable.put(6.0,  41.0);
+        // 8 m+: physics-based at rack=42° (launch≈43°), empirical ~0.205 m/s per RPS.
+        // t = sqrt(2*(d*tan43° - 1.1938)/9.81), v0 = d/(cos43°*t), RPS = v0/0.205
+        flywheelRPSTable.put(8.0,  47.0);
+        flywheelRPSTable.put(9.0,  49.5);
+        flywheelRPSTable.put(10.0, 52.0);
+        flywheelRPSTable.put(11.0, 54.0);
+        flywheelRPSTable.put(12.0, 56.0);
+        flywheelRPSTable.put(13.0, 58.0);
+        flywheelRPSTable.put(14.0, 60.0);
+        flywheelRPSTable.put(15.0, 62.0);
+        // One entry per rack-angle/flywheel-RPS breakpoint. Interpolated from prior
+        // empirical data; refine with measured values from slow-motion video or logging.
         flightTimeTable.put(1.3589, 0.89);
-        flightTimeTable.put(1.7018, 1.03);
-        flightTimeTable.put(2.3495, 1.15);
-        flightTimeTable.put(3.0099, 1.24);
-        flightTimeTable.put(3.7211, 1.24);
-        flightTimeTable.put(4.0767, 1.18);
+        flightTimeTable.put(1.5,    0.95);
+        flightTimeTable.put(2.0,    1.08);
+        flightTimeTable.put(2.5,    1.17);
+        flightTimeTable.put(3.0,    1.24);
+        flightTimeTable.put(3.5,    1.24);
+        flightTimeTable.put(4.0,    1.19);
+        flightTimeTable.put(4.5,    1.18);
         flightTimeTable.put(5.0,    1.17);
         flightTimeTable.put(6.0,    1.15);
-        flightTimeTable.put(7.0,    1.18);
-        flightTimeTable.put(8.0,    1.25);
-        flightTimeTable.put(9.0,    1.34);
-        flightTimeTable.put(10.0,   1.42);
-        flightTimeTable.put(11.0,   1.50);
-        flightTimeTable.put(12.0,   1.57);
-        flightTimeTable.put(13.0,   1.64);
-        flightTimeTable.put(14.0,   1.71);
-        flightTimeTable.put(15.0,   1.78);
+        flightTimeTable.put(6.75,   1.17);
+        // 8 m+: flat trajectory (rack=42°, launch≈43°).
+        // t = sqrt(2*(d*tan43° - 1.1938)/9.81)
+        flightTimeTable.put(8.0,    1.13);
+        flightTimeTable.put(9.0,    1.21);
+        flightTimeTable.put(10.0,   1.29);
+        flightTimeTable.put(11.0,   1.36);
+        flightTimeTable.put(12.0,   1.43);
+        flightTimeTable.put(13.0,   1.49);
+        flightTimeTable.put(14.0,   1.56);
+        flightTimeTable.put(15.0,   1.62);
 
     }
 
@@ -425,7 +426,7 @@ public class ShooterSubsystem implements Subsystem {
     public void setShooterFlywheelVelocity(double velocity) {
         double clamped = Math.max(-Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
             Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC, velocity));
-        m_shooterFlywheelMotor.setControl(new VelocityDutyCycle(clamped));
+        m_shooterFlywheelMotor.setControl(new VelocityVoltage(clamped));
     }
 
     /** Seeds the turret encoder on first enable to account for the 15° rightward offset at boot. */

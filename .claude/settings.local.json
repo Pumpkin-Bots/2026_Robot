@@ -3,7 +3,9 @@
     "allow": [
       "Bash(JAVA_HOME=\"C:/Users/Public/wpilib/2026/jdk\" ./gradlew:*)",
       "Bash(\"C:/Users/Public/wpilib/2026/jdk/bin/javap\":*)",
-      "WebFetch(domain:docs.wpilib.org)"
+      "WebFetch(domain:docs.wpilib.org)",
+      "WebFetch(domain:api.ctr-electronics.com)",
+      "WebFetch(domain:v6.docs.ctr-electronics.com)"
     ]
   }
 }

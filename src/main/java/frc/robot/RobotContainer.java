@@ -34,6 +34,7 @@ import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.GroundIntakeSubsystem;
 import frc.robot.subsystems.TurretSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
+import frc.robot.subsystems.LEDSubsystem;
 import frc.robot.subsystems.VisionSubsystem;
 import frc.robot.subsystems.VisionSubsystem.VisionPoseEstimate;
 
@@ -60,6 +61,8 @@ public class RobotContainer {
     private final VisionSubsystem vision = new VisionSubsystem(intake);
     private final TurretSubsystem turret = new TurretSubsystem();
     private final ShooterSubsystem shooter = new ShooterSubsystem(drivetrain);
+
+    private final LEDSubsystem leds = new LEDSubsystem();
 
     private final SendableChooser<Command> autoChooser;
 
@@ -90,16 +93,21 @@ public class RobotContainer {
 
     }
 
+    private double applyLinearDeadband(double value) {
+        double deadband = 0.1;
+        if (Math.abs(value) < deadband) return 0.0;
+        return Math.copySign((Math.abs(value) - deadband) / (1.0 - deadband), value);
+    }
+
     private void configureBindings() {
         // Note that X is defined as forward according to WPILib convention,
         // and Y is defined as to the left according to WPILib convention.
         drivetrain.setDefaultCommand(
             // Drivetrain will execute this command periodically
             drivetrain.applyRequest(() ->
-                drive.withDeadband(MaxSpeed * 0.01).withRotationalDeadband(MaxAngularRate * 0.1) // 10% deadband
-                    .withVelocityX(Math.pow(-joystick.getLeftY(), 3) * MaxSpeed) // Drive forward with negative Y (forward)
-                    .withVelocityY(Math.pow(-joystick.getLeftX(), 3) * MaxSpeed) // Drive left with negative X (left)
-                    .withRotationalRate(-joystick.getRightX() * MaxAngularRate) // Drive counterclockwise with negative X (left)
+                drive.withVelocityX(applyLinearDeadband(-joystick.getLeftY()) * MaxSpeed) // Drive forward with negative Y (forward)
+                    .withVelocityY(applyLinearDeadband(-joystick.getLeftX()) * MaxSpeed) // Drive left with negative X (left)
+                    .withRotationalRate(applyLinearDeadband(-joystick.getRightX()) * MaxAngularRate) // Drive counterclockwise with negative X (left)
             )
         );
 
