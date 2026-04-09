@@ -11,6 +11,7 @@ import org.photonvision.targeting.PhotonPipelineResult;
 import org.photonvision.targeting.PhotonTrackedTarget;
 
 import edu.wpi.first.math.Matrix;
+import edu.wpi.first.math.VecBuilder;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Transform3d;
@@ -52,6 +53,9 @@ public class VisionSubsystem extends SubsystemBase {
 
     // List of all cameras and estimators for iteration
     private final List<CameraConfig> cameras = new ArrayList<>();
+
+    // Pre-allocated buffer reused each call to avoid per-loop ArrayList allocation
+    private final List<VisionPoseEstimate> m_estimatesBuffer = new ArrayList<>(4);
 
     // Reference to intake subsystem for conditional camera processing
     private GroundIntakeSubsystem m_intakeSubsystem;
@@ -149,13 +153,13 @@ public class VisionSubsystem extends SubsystemBase {
      * @return List of valid pose estimates from all cameras
      */
     public List<VisionPoseEstimate> getEstimatedPoses() {
-        List<VisionPoseEstimate> estimates = new ArrayList<>();
+        m_estimatesBuffer.clear();
 
         for (CameraConfig config : cameras) {
-            getEstimatesFromCamera(config, estimates);
+            getEstimatesFromCamera(config, m_estimatesBuffer);
         }
 
-        return estimates;
+        return m_estimatesBuffer;
     }
 
     /**
@@ -309,20 +313,19 @@ public class VisionSubsystem extends SubsystemBase {
      * @return Standard deviations matrix [x, y, theta]
      */
     private Matrix<N3, N1> calculateStandardDeviations(int tagCount, double avgDistance) {
-        Matrix<N3, N1> baseStdDevs;
-
-        // Use lower standard deviations for multi-tag estimates
-        if (tagCount >= VisionConstants.MIN_TAGS_FOR_MULTI_TAG) {
-            baseStdDevs = VisionConstants.MULTI_TAG_STD_DEVS.copy();
-        } else {
-            baseStdDevs = VisionConstants.SINGLE_TAG_STD_DEVS.copy();
-        }
+        Matrix<N3, N1> base = tagCount >= VisionConstants.MIN_TAGS_FOR_MULTI_TAG
+            ? VisionConstants.MULTI_TAG_STD_DEVS
+            : VisionConstants.SINGLE_TAG_STD_DEVS;
 
         // Scale standard deviations based on distance
         // Further tags = less confidence = higher standard deviations
-        double distanceScale = 1.0 + (avgDistance * avgDistance / 30.0);
+        double scale = 1.0 + (avgDistance * avgDistance / 30.0);
 
-        return baseStdDevs.times(distanceScale);
+        return VecBuilder.fill(
+            base.get(0, 0) * scale,
+            base.get(1, 0) * scale,
+            base.get(2, 0) * scale
+        );
     }
 
     /**

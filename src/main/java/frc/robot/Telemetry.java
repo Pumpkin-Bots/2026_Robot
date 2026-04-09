@@ -1,5 +1,6 @@
 package frc.robot;
 
+import java.util.HashMap;
 import java.util.List;
 
 import com.ctre.phoenix6.SignalLogger;
@@ -100,7 +101,15 @@ public class Telemetry {
     };
 
     private final double[] m_poseArray = new double[3];
-    private double lastPosePrintTime = 0;
+
+    // Pre-allocated Pose2d arrays (indexed by count 0-4) to avoid per-loop allocation
+    private final Pose2d[][] m_visionPoseArrays = {
+        new Pose2d[0], new Pose2d[1], new Pose2d[2], new Pose2d[3], new Pose2d[4]
+    };
+
+    // Cached SignalLogger key strings per camera name to avoid per-loop string allocation
+    // Value: [poseKey, tagCountKey, avgDistanceKey]
+    private final HashMap<String, String[]> m_signalLoggerKeys = new HashMap<>();
 
     /** Accept the swerve drive state and telemeterize it to SmartDashboard and SignalLogger. */
     public void telemeterize(SwerveDriveState state) {
@@ -163,9 +172,10 @@ public class Telemetry {
         // Calculate totals from estimates
         int totalTags = 0;
         double totalDistance = 0.0;
-        Pose2d[] poses = new Pose2d[estimates.size()];
+        int count = estimates.size();
+        Pose2d[] poses = m_visionPoseArrays[Math.min(count, 4)];
 
-        for (int i = 0; i < estimates.size(); i++) {
+        for (int i = 0; i < count; i++) {
             VisionPoseEstimate estimate = estimates.get(i);
             poses[i] = estimate.pose();
             totalTags += estimate.tagCount();
@@ -185,12 +195,15 @@ public class Telemetry {
         SignalLogger.writeInteger("Vision/TotalTagsDetected", totalTags, "tags");
         SignalLogger.writeDouble("Vision/AvgTagDistance", totalTags > 0 ? totalDistance / totalTags : 0.0, "meters");
 
-        // Log individual camera estimates
+        // Log individual camera estimates using cached key strings to avoid per-loop String allocation
         for (VisionPoseEstimate estimate : estimates) {
-            String prefix = "Vision/" + estimate.cameraName() + "/";
-            SignalLogger.writeStruct(prefix + "Pose", Pose2d.struct, estimate.pose());
-            SignalLogger.writeInteger(prefix + "TagCount", estimate.tagCount(), "tags");
-            SignalLogger.writeDouble(prefix + "AvgDistance", estimate.avgTagDistance(), "meters");
+            String[] keys = m_signalLoggerKeys.computeIfAbsent(estimate.cameraName(), name -> {
+                String prefix = "Vision/" + name + "/";
+                return new String[]{prefix + "Pose", prefix + "TagCount", prefix + "AvgDistance"};
+            });
+            SignalLogger.writeStruct(keys[0], Pose2d.struct, estimate.pose());
+            SignalLogger.writeInteger(keys[1], estimate.tagCount(), "tags");
+            SignalLogger.writeDouble(keys[2], estimate.avgTagDistance(), "meters");
         }
     }
 }
