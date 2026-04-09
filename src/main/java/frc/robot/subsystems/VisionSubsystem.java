@@ -213,6 +213,13 @@ public class VisionSubsystem extends SubsystemBase {
     private void processEstimate(EstimatedRobotPose estimate, String cameraName, List<VisionPoseEstimate> estimates) {
         List<PhotonTrackedTarget> targets = estimate.targetsUsed;
 
+        // Reject estimates that used any ignored tags (tower back / outpost tags)
+        for (PhotonTrackedTarget target : targets) {
+            if (VisionConstants.IGNORED_TAG_IDS.contains(target.getFiducialId())) {
+                return;
+            }
+        }
+
         // Validate the estimate
         if (!isValidEstimate(estimate, targets)) {
             return;

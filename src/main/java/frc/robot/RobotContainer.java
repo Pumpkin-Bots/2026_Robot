@@ -89,7 +89,7 @@ public class RobotContainer {
         NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter));
         NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter));
         NamedCommands.registerCommand("ShuttleMode", new ShuttleMode(intake, turret, shooter, drivetrain));
-        NamedCommands.registerCommand("TestCommand", new TestCommand(turret));
+        //NamedCommands.registerCommand("TestCommand", new TestCommand(turret));
 
     }
 

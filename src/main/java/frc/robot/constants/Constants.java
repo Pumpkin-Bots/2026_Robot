@@ -4,6 +4,8 @@
 
 package frc.robot.constants;
 
+import java.util.Set;
+
 import edu.wpi.first.apriltag.AprilTagFieldLayout;
 import edu.wpi.first.apriltag.AprilTagFields;
 import edu.wpi.first.math.Matrix;
@@ -96,11 +98,11 @@ public final class Constants {
         public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.610;
 
 
-        public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() -2;
+        public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() - 0.25;
         public static final double BLUE_SHUTTLE_TARGET_Y_METERS = TAG_26_POSE.getY();
         public static final double BLUE_SHUTTLE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0;
 
-        public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 2;
+        public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 0.25;
         public static final double RED_SHUTTLE_TARGET_Y_METERS = TAG_10_POSE.getY();
         public static final double RED_SHUTTLE_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0;
 
@@ -273,5 +275,9 @@ public final class Constants {
         public static final double MAX_TAG_DISTANCE_METERS = 6.0;
         public static final double MAX_POSE_AMBIGUITY      = 0.2;
         public static final int    MIN_TAGS_FOR_MULTI_TAG  = 2;
+
+        // Tags to always ignore for pose estimation (tower back tags + outpost tags on both sides)
+        public static final Set<Integer> IGNORED_TAG_IDS = Set.of(13, 14, 15, 16, 29, 30, 31, 32);
+        //public static final Set<Integer> IGNORED_TAG_IDS = Set.of();
     }
 }

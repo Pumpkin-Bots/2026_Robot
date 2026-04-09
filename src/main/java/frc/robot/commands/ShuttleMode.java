@@ -60,7 +60,7 @@ public class ShuttleMode extends Command {
 
         // Offset Y by +2 or -2 based on robot position relative to the tag
         double robotY = m_Drivetrain.getState().Pose.getY();
-        double targetY = (robotY > tagY) ? tagY + 2.0 : tagY - 2.0;
+        double targetY = (robotY > tagY) ? tagY + 2.5 : tagY - 2.5;
 
         Translation3d targetPosition = new Translation3d(targetX, targetY, targetZ);
         m_Shooter.calculateShooterActions(targetPosition);
