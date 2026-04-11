@@ -24,7 +24,7 @@ public class LEDSubsystem extends SubsystemBase {
     private static final double[] SWITCH_TIMES = {125.0, 105.0, 80.0, 55.0, 30.0};
 
     // Flash window: how many seconds before a switch to start flashing.
-    private static final double FLASH_WINDOW_SECONDS = 10.0;
+    private static final double FLASH_WINDOW_SECONDS = 5.0;
 
     // Always flash in the last N seconds of the match regardless of hub state.
     private static final double MATCH_END_FLASH_SECONDS = 10.0;
@@ -41,6 +41,7 @@ public class LEDSubsystem extends SubsystemBase {
     private static final RGBWColor RED    = new RGBWColor(255, 0, 0);
     private static final RGBWColor WHITE  = new RGBWColor(200, 200, 200);
     private static final RGBWColor OFF    = new RGBWColor(0, 0, 0);
+    private static final RGBWColor YELLOW = new RGBWColor(255, 200, 0);
 
     private final CANdle m_candle;
 
@@ -48,6 +49,7 @@ public class LEDSubsystem extends SubsystemBase {
     private final SolidColor m_solidRed    = new SolidColor(LED_START, LED_END).withColor(RED);
     private final SolidColor m_solidWhite  = new SolidColor(LED_START, LED_END).withColor(WHITE);
     private final SolidColor m_solidOff    = new SolidColor(LED_START, LED_END).withColor(OFF);
+    private final SolidColor m_solidYellow = new SolidColor(LED_START, LED_END).withColor(YELLOW);
 
     // Reused control request for the wave — withColor() mutates in place.
     private final SolidColor m_waveControl = new SolidColor(LED_START, LED_END);
@@ -101,7 +103,7 @@ public class LEDSubsystem extends SubsystemBase {
                 m_strobeOn = !m_strobeOn;
                 m_lastToggleTime = now;
             }
-            m_candle.setControl(m_strobeOn ? (active ? m_solidGreen : m_solidRed) : m_solidOff);
+            m_candle.setControl(m_strobeOn ? (active ? m_solidGreen : m_solidRed) : m_solidYellow);
         } else {
             m_strobeOn = false;
             m_candle.setControl(active ? m_solidGreen : m_solidRed);

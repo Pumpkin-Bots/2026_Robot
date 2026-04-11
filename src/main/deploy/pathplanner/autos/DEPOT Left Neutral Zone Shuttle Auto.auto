@@ -117,6 +117,31 @@
               }
             ]
           }
+        },
+        {
+          "type": "race",
+          "data": {
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Left Depot Shoot"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShooterMode"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "ShooterMode"
+          }
         }
       ]
     }

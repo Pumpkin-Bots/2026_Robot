@@ -136,11 +136,11 @@ public class ShooterSubsystem implements Subsystem {
         flywheelRPSTable.put(8.0,  47.0);
         flywheelRPSTable.put(9.0,  49.5);
         flywheelRPSTable.put(10.0, 52.0);
-        flywheelRPSTable.put(11.0, 54.0);
-        flywheelRPSTable.put(12.0, 56.0);
-        flywheelRPSTable.put(13.0, 58.0);
-        flywheelRPSTable.put(14.0, 60.0);
-        flywheelRPSTable.put(15.0, 62.0);
+        flywheelRPSTable.put(11.0, 56.0);
+        flywheelRPSTable.put(12.0, 59.0);
+        flywheelRPSTable.put(13.0, 63.0);
+        flywheelRPSTable.put(14.0, 66.0);
+        flywheelRPSTable.put(15.0, 69.0);
         // One entry per rack-angle/flywheel-RPS breakpoint. Interpolated from prior
         // empirical data; refine with measured values from slow-motion video or logging.
         flightTimeTable.put(1.3589, 0.89);

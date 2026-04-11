@@ -11,7 +11,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "Left Side to Center "
+                  "pathName": "Right Side to Center "
                 }
               },
               {
@@ -30,7 +30,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "Left Shuttle Preload"
+                  "pathName": "Right Shuttle Preload"
                 }
               },
               {
@@ -49,7 +49,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "Center Left Shuttle Path"
+                  "pathName": "Center Right Shuttle Path"
                 }
               },
               {
@@ -68,7 +68,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "Left Shuttle More"
+                  "pathName": "Right Shuttle More"
                 }
               },
               {
@@ -87,7 +87,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "Left Go Home"
+                  "pathName": "Right Go Home"
                 }
               },
               {
@@ -106,7 +106,7 @@
               {
                 "type": "path",
                 "data": {
-                  "pathName": "Left Shooting Corner"
+                  "pathName": "Right Shooting Corner"
                 }
               },
               {
@@ -117,11 +117,36 @@
               }
             ]
           }
+        },
+        {
+          "type": "race",
+          "data": {
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Right Depot Shoot"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShooterMode"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "ShooterMode"
+          }
         }
       ]
     }
   },
   "resetOdom": true,
-  "folder": "Left",
+  "folder": "Right",
   "choreoAuto": false
 }

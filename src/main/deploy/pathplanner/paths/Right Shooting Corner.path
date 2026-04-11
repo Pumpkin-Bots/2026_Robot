@@ -3,29 +3,29 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 3.3144935805991436,
-        "y": 0.6515406562054205
+        "x": 3.029843081312411,
+        "y": 0.6
       },
       "prevControl": null,
       "nextControl": {
-        "x": 2.30527817403709,
-        "y": 0.7291726105563499
+        "x": 2.1629539518710463,
+        "y": 0.7682078631338995
       },
       "isLocked": false,
-      "linkedName": null
+      "linkedName": "Right Home"
     },
     {
       "anchor": {
-        "x": 0.7526390870185449,
-        "y": 0.6515406562054205
+        "x": 0.7267617689015686,
+        "y": 0.5
       },
       "prevControl": {
-        "x": 1.4125106990014262,
-        "y": 0.6515406562054205
+        "x": 1.4125105011803822,
+        "y": 0.6293876390320114
       },
       "nextControl": null,
       "isLocked": false,
-      "linkedName": null
+      "linkedName": "Right Shooting End"
     }
   ],
   "rotationTargets": [
@@ -40,7 +40,7 @@
       "minWaypointRelativePos": 0.3214044564483433,
       "maxWaypointRelativePos": 1.0,
       "constraints": {
-        "maxVelocity": 0.5,
+        "maxVelocity": 0.7,
         "maxAcceleration": 3.0,
         "maxAngularVelocity": 360.0,
         "maxAngularAcceleration": 180.0,
@@ -61,10 +61,10 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": -179.0
+    "rotation": 180.0
   },
   "reversed": false,
-  "folder": null,
+  "folder": "Right",
   "idealStartingState": {
     "velocity": 0.5,
     "rotation": 0.0
