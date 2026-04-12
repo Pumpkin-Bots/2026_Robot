@@ -3,25 +3,25 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 2.4087874465049923,
+        "x": 1.9688730385164046,
         "y": 4.080285306704707
       },
       "prevControl": null,
       "nextControl": {
-        "x": 2.3707397371325056,
+        "x": 1.930825329143918,
         "y": 4.711661309310346
       },
       "isLocked": false,
-      "linkedName": "Center Hub Back"
+      "linkedName": "Center Hub Back Diagonal"
     },
     {
       "anchor": {
-        "x": 1.5494578313253013,
-        "y": 5.958277108433736
+        "x": 1.2960627674750356,
+        "y": 5.089500713266761
       },
       "prevControl": {
-        "x": 2.1486156505315592,
-        "y": 5.188873805667868
+        "x": 1.8952205866812935,
+        "y": 4.320097410500893
       },
       "nextControl": null,
       "isLocked": false,
@@ -48,7 +48,7 @@
   "folder": "Center",
   "idealStartingState": {
     "velocity": 0,
-    "rotation": 0.0
+    "rotation": 122.68055474336332
   },
   "useDefaultConstraints": true
 }

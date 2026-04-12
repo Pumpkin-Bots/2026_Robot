@@ -7,7 +7,7 @@
         {
           "type": "path",
           "data": {
-            "pathName": "Center Move Back"
+            "pathName": "Center Move Back Diagonal"
           }
         },
         {
@@ -23,7 +23,7 @@
               {
                 "type": "wait",
                 "data": {
-                  "waitTime": 4.0
+                  "waitTime": 2.0
                 }
               }
             ]
@@ -68,12 +68,6 @@
           }
         },
         {
-          "type": "path",
-          "data": {
-            "pathName": "Depot Intake Reverse"
-          }
-        },
-        {
           "type": "race",
           "data": {
             "commands": [
@@ -90,6 +84,31 @@
                 }
               }
             ]
+          }
+        },
+        {
+          "type": "race",
+          "data": {
+            "commands": [
+              {
+                "type": "path",
+                "data": {
+                  "pathName": "Depot Wall Sweep"
+                }
+              },
+              {
+                "type": "named",
+                "data": {
+                  "name": "ShooterMode"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "type": "named",
+          "data": {
+            "name": "ShooterMode"
           }
         }
       ]

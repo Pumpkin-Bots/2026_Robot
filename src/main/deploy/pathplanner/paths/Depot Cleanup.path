@@ -3,56 +3,37 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 1.5494578313253013,
-        "y": 5.958277108433736
+        "x": 1.1925534950071324,
+        "y": 5.904636233951498
       },
       "prevControl": null,
       "nextControl": {
-        "x": 1.6368795180723081,
-        "y": 7.706710843366794
+        "x": 0.8690870185449355,
+        "y": 5.865820256776035
       },
       "isLocked": false,
-      "linkedName": "Depot Start"
+      "linkedName": "Depot End"
     },
     {
       "anchor": {
-        "x": 0.6096746987951804,
-        "y": 7.542795180722893
+        "x": 0.5844365192582024,
+        "y": 5.904636233951498
       },
       "prevControl": {
-        "x": 1.4183253012047996,
-        "y": 7.553722891572966
+        "x": 0.8432097004279597,
+        "y": 5.878758915834522
       },
       "nextControl": null,
       "isLocked": false,
-      "linkedName": null
+      "linkedName": "Depot Wall"
     }
   ],
-  "rotationTargets": [
-    {
-      "waypointRelativePos": 0.5037344398340248,
-      "rotationDegrees": 180.0
-    }
-  ],
-  "constraintZones": [
-    {
-      "name": "Constraints Zone",
-      "minWaypointRelativePos": 0.3464019851116536,
-      "maxWaypointRelativePos": 1.0,
-      "constraints": {
-        "maxVelocity": 0.5,
-        "maxAcceleration": 3.0,
-        "maxAngularVelocity": 360.0,
-        "maxAngularAcceleration": 180.0,
-        "nominalVoltage": 12.0,
-        "unlimited": false
-      }
-    }
-  ],
+  "rotationTargets": [],
+  "constraintZones": [],
   "pointTowardsZones": [],
   "eventMarkers": [],
   "globalConstraints": {
-    "maxVelocity": 3.0,
+    "maxVelocity": 0.3,
     "maxAcceleration": 3.0,
     "maxAngularVelocity": 360.0,
     "maxAngularAcceleration": 180.0,
@@ -66,8 +47,8 @@
   "reversed": false,
   "folder": "Center",
   "idealStartingState": {
-    "velocity": 0,
+    "velocity": 0.5,
     "rotation": 180.0
   },
-  "useDefaultConstraints": true
+  "useDefaultConstraints": false
 }

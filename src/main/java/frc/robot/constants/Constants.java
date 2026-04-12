@@ -192,7 +192,7 @@ public final class Constants {
         public static final double PIVOT_JERK_RPS3 = 0.0;
 
         // ---- Pivot PID + feed-forward gains (Slot 0) ----
-        public static final double PIVOT_KP = 30.0;
+        public static final double PIVOT_KP = 60.0;
         public static final double PIVOT_KI = 0.0;
         public static final double PIVOT_KD = 2.0;
         public static final double PIVOT_KS = 0.0;
@@ -211,7 +211,7 @@ public final class Constants {
         public static final double SHOOTER_POSITION = PIVOT_DOWN_ROTATIONS; // intake deployed for feeding shooter
 
         // ---- Roller / indexer speeds ----
-        public static final double ROLLER_INTAKE_SPEED = 0.95; // 95% duty cycle
+        public static final double ROLLER_INTAKE_SPEED = 1; // 95% duty cycle
         public static final double RIGHT_INDEXER_SPEED = 0.75; // 60% duty cycle
         public static final double LEFT_INDEXER_SPEED = -0.75; // 60% duty cycle
         public static final double ROLLER_JAM_SPEED = -0.2; // 20% duty cycle
@@ -221,7 +221,7 @@ public final class Constants {
         public static final double PIVOT_TOLERANCE_ROTATIONS = 0.02; // ~7°
 
 
-        public static final double PIVOT_FORCE_DOWN_POWER = 0.05;
+        public static final double PIVOT_FORCE_DOWN_POWER = 0;
     }
 
     public static final class LEDConstants {
