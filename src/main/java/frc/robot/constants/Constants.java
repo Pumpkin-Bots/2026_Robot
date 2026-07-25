@@ -129,7 +129,7 @@ public final class Constants {
     public static final class TurretConstants {
         public static final int TURRET_INDEXER_ID = 28;
 
-        public static final double TURRET_INDEXER_SPEED = .65; // 60%
+        public static final double TURRET_INDEXER_SPEED = -.65; // 60% before
 
         // Indexer spin compensation constants.
         // The turret indexer imparts spin on the ball that causes trajectory error
@@ -211,9 +211,10 @@ public final class Constants {
         public static final double SHOOTER_POSITION = PIVOT_DOWN_ROTATIONS; // intake deployed for feeding shooter
 
         // ---- Roller / indexer speeds ----
-        public static final double ROLLER_INTAKE_SPEED = 1; // 95% duty cycle
-        public static final double RIGHT_INDEXER_SPEED = 0.75; // 60% duty cycle
-        public static final double LEFT_INDEXER_SPEED = -0.75; // 60% duty cycle
+        public static final double INDEXER_TO_ROLLER_RATIO = 0.9244;
+        public static final double ROLLER_INTAKE_SPEED = 0.75;
+        public static final double RIGHT_INDEXER_SPEED = ROLLER_INTAKE_SPEED * INDEXER_TO_ROLLER_RATIO; // 60% duty cycle
+        public static final double LEFT_INDEXER_SPEED = -RIGHT_INDEXER_SPEED; // 60% duty cycle
         public static final double ROLLER_JAM_SPEED = -0.2; // 20% duty cycle
 
         // ---- Position tolerance ----

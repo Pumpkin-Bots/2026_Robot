@@ -28,9 +28,9 @@ public class JamMode extends Command {
 
     @Override
     public void execute() {
-        m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_JAM_SPEED);
-        m_GroundIntake.setLeftIndexerMotorSpeed(-Constants.GroundIntakeConstants.LEFT_INDEXER_SPEED);
-        m_GroundIntake.setRightIndexerMotorSpeed(-Constants.GroundIntakeConstants.RIGHT_INDEXER_SPEED);
+        m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_JAM_SPEED * Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
+        m_GroundIntake.setLeftIndexerMotorSpeed(Constants.GroundIntakeConstants.ROLLER_JAM_SPEED * Constants.GroundIntakeConstants.LEFT_INDEXER_SPEED);
+        m_GroundIntake.setRightIndexerMotorSpeed(Constants.GroundIntakeConstants.ROLLER_JAM_SPEED * Constants.GroundIntakeConstants.RIGHT_INDEXER_SPEED);
         m_Turret.setTurretIndexerSpeed(-Constants.TurretConstants.TURRET_INDEXER_SPEED);
 
         // Select target based on alliance color (defaults to blue if unknown)

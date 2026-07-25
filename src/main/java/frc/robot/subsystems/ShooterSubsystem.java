@@ -111,14 +111,14 @@ public class ShooterSubsystem implements Subsystem {
         rackAngleTable.put(6.0,  33.0);
         rackAngleTable.put(6.75, 36.0);
         // 8 m+: hold at hardware max (42°) for the flattest possible shot
-        rackAngleTable.put(8.0,  42.0);
-        rackAngleTable.put(9.0,  42.0);
-        rackAngleTable.put(10.0, 42.0);
-        rackAngleTable.put(11.0, 42.0);
-        rackAngleTable.put(12.0, 42.0);
-        rackAngleTable.put(13.0, 42.0);
-        rackAngleTable.put(14.0, 42.0);
-        rackAngleTable.put(15.0, 42.0);
+        rackAngleTable.put(8.0,  39.0);
+        rackAngleTable.put(9.0,  39.0);
+        rackAngleTable.put(10.0, 39.0);
+        rackAngleTable.put(11.0, 39.0);
+        rackAngleTable.put(12.0, 39.0);
+        rackAngleTable.put(13.0, 39.0);
+        rackAngleTable.put(14.0, 39.0);
+        rackAngleTable.put(15.0, 39.0);
 
         // TODO: Fill in from test shots — put(distance_meters, flywheel_motor_RPS)
         flywheelRPSTable.put(1.3589, 30.75);

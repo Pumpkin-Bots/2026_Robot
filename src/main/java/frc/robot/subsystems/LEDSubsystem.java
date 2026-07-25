@@ -30,12 +30,19 @@ public class LEDSubsystem extends SubsystemBase {
     private static final double MATCH_END_FLASH_SECONDS = 10.0;
 
     // Flash rate ramps from MIN_HZ (far from switch) to MAX_HZ (at switch).
-    private static final double FLASH_MIN_HZ =  1.0;
-    private static final double FLASH_MAX_HZ =  8.0;
+    private static final double FLASH_MIN_HZ = 1.0;
+    private static final double FLASH_MAX_HZ = 8.0;
 
     // Brightness wave applied during solid (non-strobe) states.
     private static final double WAVE_HZ             = 1;  // one full pulse per 2 s
-    private static final double WAVE_MIN_BRIGHTNESS = 0.05; // never dims below 35 %
+    private static final double WAVE_MIN_BRIGHTNESS = 0.05;
+
+    // Chase pattern: number of LEDs per alternating segment.
+    // 10 LEDs → 7 segments across the 68-LED strip, each clearly visible from the field.
+    private static final int CHASE_SEGMENT_SIZE = 10;
+    // ceil((LED_END - LED_START + 1) / CHASE_SEGMENT_SIZE) = ceil(68/10) = 7
+    private static final int NUM_SEGMENTS =
+        (LED_END - LED_START + CHASE_SEGMENT_SIZE) / CHASE_SEGMENT_SIZE;
 
     private static final RGBWColor GREEN  = new RGBWColor(0, 255, 0);
     private static final RGBWColor RED    = new RGBWColor(255, 0, 0);
@@ -45,21 +52,33 @@ public class LEDSubsystem extends SubsystemBase {
 
     private final CANdle m_candle;
 
-    private final SolidColor m_solidGreen  = new SolidColor(LED_START, LED_END).withColor(GREEN);
-    private final SolidColor m_solidRed    = new SolidColor(LED_START, LED_END).withColor(RED);
-    private final SolidColor m_solidWhite  = new SolidColor(LED_START, LED_END).withColor(WHITE);
-    private final SolidColor m_solidOff    = new SolidColor(LED_START, LED_END).withColor(OFF);
-    private final SolidColor m_solidYellow = new SolidColor(LED_START, LED_END).withColor(YELLOW);
+    private final SolidColor m_solidGreen = new SolidColor(LED_START, LED_END).withColor(GREEN);
+    private final SolidColor m_solidRed   = new SolidColor(LED_START, LED_END).withColor(RED);
+    private final SolidColor m_solidWhite = new SolidColor(LED_START, LED_END).withColor(WHITE);
+    private final SolidColor m_solidOff   = new SolidColor(LED_START, LED_END).withColor(OFF);
 
-    // Reused control request for the wave — withColor() mutates in place.
+    // Reused control request for the brightness wave — withColor() mutates in place.
     private final SolidColor m_waveControl = new SolidColor(LED_START, LED_END);
 
-    // Software strobe state — avoids device-side StrobeAnimation persisting after the flash window.
-    private boolean m_strobeOn = false;
+    // Per-segment SolidColor controls for the chase pattern (created once, reused every toggle).
+    // SolidColor with a range-limited startIndex/endIndex only affects that range of LEDs,
+    // so calling setControl for each segment in sequence builds up the full pattern.
+    private final SolidColor[] m_chaseSegs = new SolidColor[NUM_SEGMENTS];
+
+    // Chase pattern state.  m_lastSentPhase = -1 forces the first send after any mode change.
+    private int     m_chasePhase     = 0;
+    private int     m_lastSentPhase  = -1;
+    private boolean m_lastSentActive = false;
     private double  m_lastToggleTime = 0.0;
 
     public LEDSubsystem() {
         m_candle = new CANdle(Constants.LEDConstants.CANDLE_ID);
+
+        for (int i = 0; i < NUM_SEGMENTS; i++) {
+            int segStart = LED_START + i * CHASE_SEGMENT_SIZE;
+            int segEnd   = Math.min(segStart + CHASE_SEGMENT_SIZE - 1, LED_END);
+            m_chaseSegs[i] = new SolidColor(segStart, segEnd);
+        }
     }
 
     @Override
@@ -68,6 +87,7 @@ public class LEDSubsystem extends SubsystemBase {
             double b = waveBrightness();
             m_waveControl.withColor(new RGBWColor((int)(128 * b), 0, (int)(128 * b)));
             m_candle.setControl(m_waveControl);
+            m_lastSentPhase = -1;
             return;
         }
 
@@ -75,6 +95,7 @@ public class LEDSubsystem extends SubsystemBase {
             double b = waveBrightness();
             m_waveControl.withColor(new RGBWColor((int)(255 * b), (int)(20 * b), 0));
             m_candle.setControl(m_waveControl);
+            m_lastSentPhase = -1;
             return;
         }
 
@@ -82,31 +103,59 @@ public class LEDSubsystem extends SubsystemBase {
         var allianceOpt = DriverStation.getAlliance();
         if (gameData.isEmpty() || allianceOpt.isEmpty()) {
             m_candle.setControl(m_solidWhite);
+            m_lastSentPhase = -1;
             return;
         }
 
         double matchTime = DriverStation.getMatchTime();
         if (matchTime < 0) {
             m_candle.setControl(m_solidOff);
+            m_lastSentPhase = -1;
             return;
         }
 
         char gd = gameData.charAt(0);
         Alliance alliance = allianceOpt.get();
-        boolean active = isHubActive(matchTime, gd, alliance);
-        double flashHz = getFlashHz(matchTime, gd, alliance);
+        boolean active  = isHubActive(matchTime, gd, alliance);
+        double  flashHz = getFlashHz(matchTime, gd, alliance);
 
         if (flashHz > 0) {
-            // Software strobe: full brightness on / full off.
-            double now = Timer.getFPGATimestamp();
-            if (now - m_lastToggleTime >= 0.5 / flashHz) {
-                m_strobeOn = !m_strobeOn;
-                m_lastToggleTime = now;
-            }
-            m_candle.setControl(m_strobeOn ? (active ? m_solidGreen : m_solidRed) : m_solidYellow);
+            applyFlashChase(active, flashHz);
         } else {
-            m_strobeOn = false;
+            m_lastSentPhase = -1;
             m_candle.setControl(active ? m_solidGreen : m_solidRed);
+        }
+    }
+
+    /**
+     * Individually-addressable chase pattern for flash windows.
+     *
+     * The strip is divided into CHASE_SEGMENT_SIZE-LED segments. Alternating segments show
+     * the hub-status color (green = active, red = inactive) while the others show bright
+     * yellow — then on each toggle the two sets swap, creating a "jumping checkerboard"
+     * effect. Unlike a simple on/off strobe, the strip is always fully lit with both colors
+     * visible, giving maximum brightness and contrast from the driver station.
+     *
+     * SolidColor controls are range-limited to each segment so calling setControl per segment
+     * in sequence builds the full pattern without disturbing other ranges. CAN frames are only
+     * sent when the displayed pattern actually changes (at most flashHz × NUM_SEGMENTS per second).
+     */
+    private void applyFlashChase(boolean active, double flashHz) {
+        double now = Timer.getFPGATimestamp();
+        if (now - m_lastToggleTime >= 0.5 / flashHz) {
+            m_chasePhase     = 1 - m_chasePhase;
+            m_lastToggleTime = now;
+        }
+
+        // Skip CAN traffic when nothing has changed.
+        if (m_chasePhase == m_lastSentPhase && active == m_lastSentActive) return;
+        m_lastSentPhase  = m_chasePhase;
+        m_lastSentActive = active;
+
+        RGBWColor primaryColor = active ? GREEN : RED;
+        for (int i = 0; i < NUM_SEGMENTS; i++) {
+            RGBWColor color = ((i + m_chasePhase) % 2 == 0) ? primaryColor : YELLOW;
+            m_candle.setControl(m_chaseSegs[i].withColor(color));
         }
     }
 
