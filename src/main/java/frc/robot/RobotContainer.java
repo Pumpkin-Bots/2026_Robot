@@ -13,12 +13,15 @@ import com.ctre.phoenix6.swerve.SwerveRequest;
 import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.auto.NamedCommands;
 
+import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
 import frc.robot.commands.DefenseMode;
@@ -57,7 +60,7 @@ public class RobotContainer {
     private final CommandXboxController joystick = new CommandXboxController(0);
 
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
-    private final GroundIntakeSubsystem intake = new GroundIntakeSubsystem();
+    private final GroundIntakeSubsystem intake = new GroundIntakeSubsystem(drivetrain);
     private final VisionSubsystem vision = new VisionSubsystem(intake);
     private final TurretSubsystem turret = new TurretSubsystem();
     private final ShooterSubsystem shooter = new ShooterSubsystem(drivetrain);
@@ -99,6 +102,28 @@ public class RobotContainer {
         return Math.copySign((Math.abs(value) - deadband) / (1.0 - deadband), value);
     }
 
+    /**
+     * Returns the rotation joystick axis. On the real robot this is the right stick's X axis
+     * (axis 4), which is correct for the Windows Driver Station. In simulation on this Mac, the
+     * OS reports controller axes in a different order — right stick X shows up on axis 2 instead
+     * — so this reads raw axis 2 only when simulating. Sim-only: never affects real-robot input.
+     */
+    private double getRotationInput() {
+        return RobotBase.isSimulation() ? joystick.getRawAxis(2) : joystick.getRightX();
+    }
+
+    /**
+     * Returns the left trigger's value, normalized to 0 (released) - 1 (fully pressed). On the
+     * real robot this is the standard trigger axis. In simulation on this Mac, the OS reports it
+     * as raw axis 5 ranging -1 to 1 instead of 0 to 1, so it's remapped here. Sim-only: never
+     * affects real-robot input.
+     */
+    private double getFireTriggerInput() {
+        return RobotBase.isSimulation()
+            ? (joystick.getRawAxis(5) + 1.0) / 2.0
+            : joystick.getLeftTriggerAxis();
+    }
+
     private void configureBindings() {
         // Note that X is defined as forward according to WPILib convention,
         // and Y is defined as to the left according to WPILib convention.
@@ -107,7 +132,7 @@ public class RobotContainer {
             drivetrain.applyRequest(() ->
                 drive.withVelocityX(applyLinearDeadband(-joystick.getLeftY()) * MaxSpeed) // Drive forward with negative Y (forward)
                     .withVelocityY(applyLinearDeadband(-joystick.getLeftX()) * MaxSpeed) // Drive left with negative X (left)
-                    .withRotationalRate(applyLinearDeadband(-joystick.getRightX()) * MaxAngularRate) // Drive counterclockwise with negative X (left)
+                    .withRotationalRate(applyLinearDeadband(-getRotationInput()) * MaxAngularRate) // Drive counterclockwise with negative X (left)
             )
         );
 
@@ -166,6 +191,15 @@ public class RobotContainer {
         // Reset the field-centric heading on left bumper press.
         joystick.leftBumper().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
+        // Sim-only: drive over a fuel piece with the intake deployed to pick it up, and it's
+        // immediately fired from the shooter's current aim. hasFuel()/tryConsumeFuel() are both
+        // no-ops on a real robot, so this trigger never fires there.
+        new Trigger(intake::hasFuel).onTrue(Commands.runOnce(() -> {
+            if (intake.tryConsumeFuel()) {
+                shooter.launchProjectile();
+            }
+        }));
+
         drivetrain.registerTelemetry(logger::telemeterize);
     }
 
@@ -198,6 +232,47 @@ public class RobotContainer {
     public Command getAutonomousCommand() {
         // Return the selected auto from the chooser
         return autoChooser.getSelected();
+    }
+
+    /** Publishes current mechanism angles as 3D poses for AdvantageScope. Called every loop from {@link Robot}. */
+    public void updateMechanismTelemetry() {
+        logger.updateMechanismPoses(
+            shooter.getTurretRotatorAngleDeg(),
+            shooter.getShooterRackAngleDeg(),
+            intake.getPivotAngleDeg(),
+            drivetrain.getState().ModuleStates,
+            drivetrain.getModuleLocations()
+        );
+        logger.updateGamePieces();
+    }
+
+    /** Feeds ground-truth pose into simulated vision and telemetry each loop. No-op on a real robot. */
+    public void updateSimulation() {
+        drivetrain.getSimulatedGroundTruthPose().ifPresent(pose -> {
+            vision.updateSimulatedVision(pose);
+            logger.updateGroundTruthPose(pose);
+        });
+    }
+
+    private static final double MAX_PROJECTILE_FIRE_RATE_PER_SEC = 15.0;
+    private double m_lastProjectileFireTime = 0.0;
+
+    /**
+     * Sim-only: fires simulated projectiles at a rate scaled by how far the left trigger is
+     * pressed, from 0 (released) up to MAX_PROJECTILE_FIRE_RATE_PER_SEC (fully pressed). No-op
+     * on a real robot, since launchProjectile() itself is a no-op there.
+     */
+    public void updateAutoFire() {
+        double rate = getFireTriggerInput() * MAX_PROJECTILE_FIRE_RATE_PER_SEC;
+        if (rate <= 0.0) {
+            return;
+        }
+
+        double now = Timer.getFPGATimestamp();
+        if (now - m_lastProjectileFireTime >= 1.0 / rate) {
+            m_lastProjectileFireTime = now;
+            shooter.launchProjectile();
+        }
     }
 
     /**

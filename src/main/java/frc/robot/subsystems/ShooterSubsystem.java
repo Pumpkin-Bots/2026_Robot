@@ -6,18 +6,29 @@ import com.ctre.phoenix6.configs.SoftwareLimitSwitchConfigs;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.StaticBrake;
-import com.ctre.phoenix6.controls.VelocityDutyCycle;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
+import com.ctre.phoenix6.sim.TalonFXSimState;
 
 import edu.wpi.first.math.geometry.Pose2d;
+import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
 import edu.wpi.first.math.kinematics.ChassisSpeeds;
+import edu.wpi.first.math.system.plant.DCMotor;
+import edu.wpi.first.math.system.plant.LinearSystemId;
+import edu.wpi.first.units.Units;
+import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.simulation.FlywheelSim;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import frc.robot.constants.Constants;
+
+import org.ironmaple.simulation.SimulatedArena;
+import org.ironmaple.simulation.seasonspecific.rebuilt2026.RebuiltFuelOnFly;
 
 public class ShooterSubsystem implements Subsystem {
 
@@ -27,6 +38,30 @@ public class ShooterSubsystem implements Subsystem {
     private final CommandSwerveDrivetrain m_drivetrain;
     private boolean m_turretZeroed = false;
     private double m_lastCommandedTurretAngle = 0.0;
+
+    // ---- Simulation ----
+    // The turret and rack skip physics simulation entirely and just snap their simulated
+    // position straight to whatever was last commanded (see updateTurretSim/updateRackSim) —
+    // simulating their real motor dynamics turned out to need real tuning (moment of inertia,
+    // PID gains) that isn't available yet, and wasn't the point of this sim: the goal is
+    // testing the aiming math and 3D visualization, not sim-only PID convergence. The flywheel
+    // keeps a real physics model since velocity control doesn't have the same instability risk.
+    private static final double kSimPeriodSeconds = 0.02;
+    private static final DCMotor kFlywheelGearbox = DCMotor.getKrakenX60(1);
+
+    private final FlywheelSim m_flywheelSim;
+    private double m_lastCommandedTurretRotorPosition = 0.0;
+    private double m_lastCommandedRackRotorPosition = 0.0;
+
+    // ---- Live PID tuning via SmartDashboard (turret only for now) ----
+    // Slot0Configs below are normally baked in once at startup, so testing a new gain would
+    // otherwise mean editing Constants, recompiling, and redeploying every time. Reading these
+    // back each loop lets you drag a "Turret/kP" etc. slider on Shuffleboard/Glass/Elastic and
+    // see the response change live instead.
+    private double m_tunedTurretKP = Constants.ShooterConstants.ROTATOR_KP;
+    private double m_tunedTurretKI = Constants.ShooterConstants.ROTATOR_KI;
+    private double m_tunedTurretKD = Constants.ShooterConstants.ROTATOR_KD;
+    private double m_tunedTurretKV = Constants.ShooterConstants.ROTATOR_KV;
 
     private static final Slot0Configs turretRotatorGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.ROTATOR_KP)
@@ -177,16 +212,36 @@ public class ShooterSubsystem implements Subsystem {
         m_turretRotatorMotor.getConfigurator().apply(turretRotatorGains);
         m_turretRotatorMotor.getConfigurator().apply(turretSoftLimits);
         m_turretRotatorMotor.getConfigurator().apply(turretCurrentLimits);
-        m_turretRotatorMotor.optimizeBusUtilization(); // closed-loop runs on TalonFX; no readbacks needed
+        // Position is read back for mechanism telemetry/3D visualization, so request it explicitly.
+        m_turretRotatorMotor.getPosition().setUpdateFrequency(50);
+        m_turretRotatorMotor.optimizeBusUtilization();
+
+        SmartDashboard.putNumber("Turret/kP", m_tunedTurretKP);
+        SmartDashboard.putNumber("Turret/kI", m_tunedTurretKI);
+        SmartDashboard.putNumber("Turret/kD", m_tunedTurretKD);
+        SmartDashboard.putNumber("Turret/kV", m_tunedTurretKV);
 
         m_shooterRackMotor.getConfigurator().apply(rackGains);
         m_shooterRackMotor.getConfigurator().apply(rackSoftLimits);
         m_shooterRackMotor.getConfigurator().apply(rackCurrentLimits);
+        m_shooterRackMotor.getPosition().setUpdateFrequency(50);
         m_shooterRackMotor.optimizeBusUtilization();
 
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelGains);
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelCurrentLimits);
+        // Velocity is read back to compute simulated projectile launch speed — request it explicitly.
+        m_shooterFlywheelMotor.getVelocity().setUpdateFrequency(50);
         m_shooterFlywheelMotor.optimizeBusUtilization();
+
+        if (RobotBase.isSimulation()) {
+            m_flywheelSim = new FlywheelSim(
+                LinearSystemId.createFlywheelSystem(
+                    kFlywheelGearbox, 0.001, Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO),
+                kFlywheelGearbox
+            );
+        } else {
+            m_flywheelSim = null;
+        }
     }
 
     /**
@@ -395,7 +450,21 @@ public class ShooterSubsystem implements Subsystem {
         setTurretRotatorAngle(turretAngleDeg);
     }
 
+    /** Returns the current turret rotator angle in degrees (same convention as {@link #setTurretRotatorAngle}). */
+    public double getTurretRotatorAngleDeg() {
+        return m_turretRotatorMotor.getPosition().getValueAsDouble()
+            * Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO * 360.0;
+    }
+
+    /** Returns the current shooter rack angle in degrees (same convention as {@link #setShooterRackAngle}). */
+    public double getShooterRackAngleDeg() {
+        return m_shooterRackMotor.getPosition().getValueAsDouble()
+            * Constants.ShooterConstants.RACK_GEAR_RATIO * 360.0
+            + Constants.ShooterConstants.RACK_MIN_ANGLE;
+    }
+
     public void setTurretRotatorPosition(double position) {
+        m_lastCommandedTurretRotorPosition = position;
         m_turretRotatorMotor.setControl(new PositionVoltage(position));
     }
 
@@ -407,6 +476,7 @@ public class ShooterSubsystem implements Subsystem {
      */
     public void setTurretRotatorAngle(double angleDeg) {
         double position = angleToTurretPosition(angleDeg);
+        m_lastCommandedTurretRotorPosition = position;
         // Counter-rotation: turret must spin at -omega to maintain field-relative aim.
         // Convert rad/s → turret rot/s → motor rot/s (gear ratio is negative, so signs cancel).
         double omega = m_drivetrain.getState().Speeds.omegaRadiansPerSecond;
@@ -415,6 +485,7 @@ public class ShooterSubsystem implements Subsystem {
     }
 
     public void setShooterRackPosition(double position) {
+        m_lastCommandedRackRotorPosition = position;
         m_shooterRackMotor.setControl(new PositionVoltage(position));
     }
 
@@ -427,6 +498,48 @@ public class ShooterSubsystem implements Subsystem {
         double clamped = Math.max(-Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
             Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC, velocity));
         m_shooterFlywheelMotor.setControl(new VelocityVoltage(clamped));
+    }
+
+    /** Returns the current flywheel speed in motor rotations per second (FLYWHEEL_GEAR_RATIO is 1, direct drive). */
+    public double getShooterFlywheelVelocityRps() {
+        return m_shooterFlywheelMotor.getVelocity().getValueAsDouble();
+    }
+
+    /**
+     * Launches a simulated fuel projectile from the shooter's current aim (turret angle, rack
+     * angle, flywheel speed) using maple-sim's built-in 2026 physics — including shoot-on-the-move
+     * compensation from the drivetrain's current field-relative velocity. No-op on a real robot.
+     *
+     * <p>Note: this uses BALL_LAUNCH_FRONT_OFFSET_METERS/LATERAL_OFFSET_METERS rotated by the
+     * turret's full field-relative facing (robot heading + turret angle), which is slightly more
+     * accurate than calculateLaunchPosition()'s robot-heading-only rotation — a small (~0.11 m)
+     * difference in where the projectile visually spawns, not in aim direction.
+     */
+    public void launchProjectile() {
+        if (!RobotBase.isSimulation()) {
+            return;
+        }
+
+        Pose2d robotPose = m_drivetrain.getState().Pose;
+        ChassisSpeeds fieldRelativeSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
+            m_drivetrain.getState().Speeds, robotPose.getRotation());
+
+        Rotation2d shooterFacing = robotPose.getRotation().plus(Rotation2d.fromDegrees(getTurretRotatorAngleDeg()));
+        double launchSpeedMPS = Math.PI * Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS
+            * getShooterFlywheelVelocityRps();
+        double shooterAngleDeg = 90.0 - getShooterRackAngleDeg();
+
+        SimulatedArena.getInstance().addGamePieceProjectile(new RebuiltFuelOnFly(
+            robotPose.getTranslation(),
+            new Translation2d(
+                Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS,
+                Constants.ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS),
+            fieldRelativeSpeeds,
+            shooterFacing,
+            Units.Meters.of(Constants.ShooterConstants.BALL_LAUNCH_HEIGHT_METERS),
+            Units.MetersPerSecond.of(launchSpeedMPS),
+            Units.Degrees.of(shooterAngleDeg)
+        ));
     }
 
     /** Seeds the turret encoder on first enable to account for the 15° rightward offset at boot. */
@@ -459,5 +572,56 @@ public class ShooterSubsystem implements Subsystem {
             setShooterRackPosition(0);
             setShooterFlywheelVelocity(0);
         });
+    }
+
+    @Override
+    public void periodic() {
+        double kP = SmartDashboard.getNumber("Turret/kP", m_tunedTurretKP);
+        double kI = SmartDashboard.getNumber("Turret/kI", m_tunedTurretKI);
+        double kD = SmartDashboard.getNumber("Turret/kD", m_tunedTurretKD);
+        double kV = SmartDashboard.getNumber("Turret/kV", m_tunedTurretKV);
+        if (kP != m_tunedTurretKP || kI != m_tunedTurretKI || kD != m_tunedTurretKD || kV != m_tunedTurretKV) {
+            m_tunedTurretKP = kP;
+            m_tunedTurretKI = kI;
+            m_tunedTurretKD = kD;
+            m_tunedTurretKV = kV;
+            m_turretRotatorMotor.getConfigurator().apply(
+                new Slot0Configs().withKP(kP).withKI(kI).withKD(kD).withKV(kV));
+        }
+    }
+
+    @Override
+    public void simulationPeriodic() {
+        updateTurretSim();
+        updateRackSim();
+        updateFlywheelSim();
+    }
+
+    /**
+     * Snaps the simulated turret straight to its last commanded position instead of running a
+     * physics model through it — see the note on the simulation fields above for why.
+     */
+    private void updateTurretSim() {
+        m_turretRotatorMotor.getSimState().setRawRotorPosition(m_lastCommandedTurretRotorPosition);
+    }
+
+    /**
+     * Snaps the simulated rack straight to its last commanded position instead of running a
+     * physics model through it — see the note on the simulation fields above for why.
+     */
+    private void updateRackSim() {
+        m_shooterRackMotor.getSimState().setRawRotorPosition(m_lastCommandedRackRotorPosition);
+    }
+
+    /** Steps the flywheel's physics model and feeds its velocity back into the TalonFX simulation state. */
+    private void updateFlywheelSim() {
+        TalonFXSimState simState = m_shooterFlywheelMotor.getSimState();
+        simState.setSupplyVoltage(RobotController.getBatteryVoltage());
+        m_flywheelSim.setInputVoltage(simState.getMotorVoltage());
+        m_flywheelSim.update(kSimPeriodSeconds);
+
+        double rotorRotationsPerSec = m_flywheelSim.getAngularVelocityRadPerSec()
+            / (2 * Math.PI) * Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO;
+        simState.setRotorVelocity(rotorRotationsPerSec);
     }
 }
