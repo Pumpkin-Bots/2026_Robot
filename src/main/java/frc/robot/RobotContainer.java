@@ -21,8 +21,9 @@ import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
-import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
+
+import org.ironmaple.simulation.SimulatedArena;
 
 import frc.robot.commands.DefenseMode;
 import frc.robot.commands.TrenchMode;
@@ -191,14 +192,14 @@ public class RobotContainer {
         // Reset the field-centric heading on left bumper press.
         joystick.leftBumper().onTrue(drivetrain.runOnce(drivetrain::seedFieldCentric));
 
-        // Sim-only: drive over a fuel piece with the intake deployed to pick it up, and it's
-        // immediately fired from the shooter's current aim. hasFuel()/tryConsumeFuel() are both
-        // no-ops on a real robot, so this trigger never fires there.
-        new Trigger(intake::hasFuel).onTrue(Commands.runOnce(() -> {
-            if (intake.tryConsumeFuel()) {
-                shooter.launchProjectile();
-            }
-        }));
+        // Sim-only: d-pad down puts all game pieces back in their starting piles.
+        joystick.povDown().onTrue(
+            Commands.runOnce(() -> {
+                if (RobotBase.isSimulation()) {
+                    SimulatedArena.getInstance().resetFieldForAuto();
+                }
+            }).ignoringDisable(true)
+        );
 
         drivetrain.registerTelemetry(logger::telemeterize);
     }
@@ -244,6 +245,7 @@ public class RobotContainer {
             drivetrain.getModuleLocations()
         );
         logger.updateGamePieces();
+        logger.updateScore();
     }
 
     /** Feeds ground-truth pose into simulated vision and telemetry each loop. No-op on a real robot. */
@@ -271,6 +273,18 @@ public class RobotContainer {
         double now = Timer.getFPGATimestamp();
         if (now - m_lastProjectileFireTime >= 1.0 / rate) {
             m_lastProjectileFireTime = now;
+            shooter.launchProjectile();
+        }
+    }
+
+    /**
+     * Sim-only: immediately fires any fuel currently held in the intake, every loop. A plain
+     * per-loop check rather than an edge-triggered Trigger, so it can't miss a pickup that
+     * happens to land on the same loop it's consumed. No-ops on a real robot (hasFuel() is
+     * always false there).
+     */
+    public void updateIntakeAutoFire() {
+        if (intake.hasFuel() && intake.tryConsumeFuel()) {
             shooter.launchProjectile();
         }
     }

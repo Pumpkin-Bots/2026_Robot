@@ -87,7 +87,11 @@ public final class Constants {
             .orElseThrow();
         public static final double BLUE_TARGET_X_METERS = TAG_26_POSE.getX() + 0.597;
         public static final double BLUE_TARGET_Y_METERS = TAG_26_POSE.getY() + 0;
-        public static final double BLUE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0.610;
+        // Lowered from +0.610 — maple-sim's RebuiltHub scores fuel between z=1.5748m and
+        // z=1.8288m (a 10 in tall zone starting at the hub's own position), so +0.610 (aiming
+        // near the top of that zone) was causing shots to overshoot, worse at longer range.
+        // +0.45 aims near the low edge of the real scoring zone instead.
+        public static final double BLUE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0.45;
 
         // Field-relative 3D position of the red side shooting target (AprilTag 10)
         private static final Pose3d TAG_10_POSE = VisionConstants.APRIL_TAG_FIELD_LAYOUT
@@ -95,7 +99,7 @@ public final class Constants {
             .orElseThrow();
         public static final double RED_TARGET_X_METERS = TAG_10_POSE.getX() - 0.597;
         public static final double RED_TARGET_Y_METERS = TAG_10_POSE.getY() + 0;
-        public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.610;
+        public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.45;
 
 
         public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() - 0.25;
@@ -271,6 +275,14 @@ public final class Constants {
         // Standard deviations — higher = less trust. Format: [x, y, theta]
         public static final Matrix<N3, N1> SINGLE_TAG_STD_DEVS = VecBuilder.fill(4.0, 4.0, 8.0);
         public static final Matrix<N3, N1> MULTI_TAG_STD_DEVS  = VecBuilder.fill(0.5, 0.5, 1.0);
+
+        // These std devs above are conservatively tuned for real-world camera noise. maple-sim's
+        // simulated cameras don't have anywhere near that much noise, so trusting them exactly
+        // as little as real cameras makes odometry drift (e.g. from a wall collision) recover
+        // unrealistically slowly in sim. Scales the final std dev down (only in simulation) to
+        // let simulated vision correct drift faster — tune this if recovery still feels too slow
+        // or corrections start looking too twitchy/aggressive.
+        public static final double SIM_STD_DEV_SCALE_FACTOR = 0.1;
 
         public static final double MAX_TAG_DISTANCE_METERS = 6.0;
         public static final double MAX_POSE_AMBIGUITY      = 0.2;

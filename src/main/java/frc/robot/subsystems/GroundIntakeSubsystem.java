@@ -14,6 +14,7 @@ import com.ctre.phoenix6.signals.MotorAlignmentValue;
 
 import edu.wpi.first.units.Units;
 import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
@@ -21,6 +22,7 @@ import frc.robot.constants.Constants;
 
 import org.ironmaple.simulation.IntakeSimulation;
 import org.ironmaple.simulation.IntakeSimulation.IntakeSide;
+import org.ironmaple.simulation.SimulatedArena;
 
 public class GroundIntakeSubsystem implements Subsystem {
 
@@ -39,11 +41,18 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     // ---- Simulation-only fuel pickup ----
     // "Touch it, get it" collision model from maple-sim — collects a "Fuel" piece on contact
-    // while the intake is deployed. Capacity of 1 means it naturally won't grab another piece
-    // until the current one is consumed (see tryConsumeFuel()), matching a single-shot feed.
-    // Placement/size (front, 20in wide, 8in extension) is a rough guess — adjust to match the
-    // real intake's mounting side and footprint.
+    // while the intake is deployed. Capacity of 8 lets the intake buffer up to 8 pieces (e.g.
+    // driving through a dense cluster faster than they can be fired) rather than a single-shot
+    // feed. Placement/size (front, 20in wide, 8in extension) is a rough guess — adjust to match
+    // the real intake's mounting side and footprint.
+    private static final int INTAKE_CAPACITY = 8;
     private final IntakeSimulation m_intakeSim;
+
+    // Caps how fast the robot can actually intake fuel — gates tryConsumeFuel(), which (once the
+    // buffer above is full) also gates new pickups, so driving through a dense pile faster than
+    // this rate just leaves the extra pieces on the field instead of collecting them.
+    private static final double MAX_INTAKE_RATE_PER_SEC = 8.0;
+    private double m_lastFuelConsumedTimestamp = -1.0 / MAX_INTAKE_RATE_PER_SEC;
 
     // Reusable control requests
     private final MotionMagicVoltage m_pivotRequest = new MotionMagicVoltage(0).withSlot(0);
@@ -145,25 +154,53 @@ public class GroundIntakeSubsystem implements Subsystem {
                 Units.Inches.of(20),
                 Units.Inches.of(8),
                 IntakeSide.FRONT,
-                1
+                INTAKE_CAPACITY
             );
         } else {
             m_intakeSim = null;
         }
     }
 
-    /** Returns true if the intake is currently holding a fuel piece. Always false on a real robot. */
+    /**
+     * Returns true if the intake is currently holding a fuel piece. Always false on a real robot.
+     *
+     * <p>Synchronized on the arena instance because maple-sim increments the intake's piece
+     * count from its own physics thread (inside SimulatedArena's synchronized
+     * simulationPeriodic(), driven by the drivetrain's Notifier) — reading/writing it from the
+     * main robot thread without this lock is a real race that eventually leaves the count stuck
+     * at capacity, after which the intake can never register a new pickup again.
+     */
     public boolean hasFuel() {
-        return m_intakeSim != null && m_intakeSim.getGamePiecesAmount() > 0;
+        if (m_intakeSim == null) {
+            return false;
+        }
+        synchronized (SimulatedArena.getInstance()) {
+            return m_intakeSim.getGamePiecesAmount() > 0;
+        }
     }
 
     /**
      * Removes one held fuel piece, if any. Used to hand a piece off to the shooter on pickup.
+     * Throttled to {@link #MAX_INTAKE_RATE_PER_SEC} — see the field comment above for why.
+     * See {@link #hasFuel()} for why this is synchronized.
      *
-     * @return true if a piece was present and removed
+     * @return true if a piece was present, removed, and the rate limit allowed it
      */
     public boolean tryConsumeFuel() {
-        return m_intakeSim != null && m_intakeSim.obtainGamePieceFromIntake();
+        if (m_intakeSim == null) {
+            return false;
+        }
+        double now = Timer.getFPGATimestamp();
+        if (now - m_lastFuelConsumedTimestamp < 1.0 / MAX_INTAKE_RATE_PER_SEC) {
+            return false;
+        }
+        synchronized (SimulatedArena.getInstance()) {
+            boolean consumed = m_intakeSim.obtainGamePieceFromIntake();
+            if (consumed) {
+                m_lastFuelConsumedTimestamp = now;
+            }
+            return consumed;
+        }
     }
 
     /**
@@ -246,10 +283,13 @@ public class GroundIntakeSubsystem implements Subsystem {
         SmartDashboard.putBoolean("Intake/IsDown", isInIntakePosition());
 
         if (m_intakeSim != null) {
-            if (isInIntakePosition()) {
-                m_intakeSim.startIntake();
-            } else {
-                m_intakeSim.stopIntake();
+            // See hasFuel() for why this needs to be synchronized with the physics thread.
+            synchronized (SimulatedArena.getInstance()) {
+                if (isInIntakePosition()) {
+                    m_intakeSim.startIntake();
+                } else {
+                    m_intakeSim.stopIntake();
+                }
             }
         }
     }

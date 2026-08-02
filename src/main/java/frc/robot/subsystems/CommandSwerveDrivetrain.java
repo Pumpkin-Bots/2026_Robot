@@ -31,7 +31,7 @@ import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 
 import org.ironmaple.simulation.SimulatedArena;
 import org.ironmaple.simulation.drivesims.SwerveDriveSimulation;
-import org.ironmaple.simulation.seasonspecific.rebuilt2026.Arena2026Rebuilt;
+import frc.robot.utils.simulation.Robot8793Arena;
 
 import frc.robot.generated.TunerConstants;
 import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
@@ -302,7 +302,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         // instead of maple-sim's generic default. Must happen before anything else touches
         // SimulatedArena.getInstance() — including the MapleSimSwerveDrivetrain constructor
         // below — since the singleton is created lazily on first access.
-        SimulatedArena.overrideInstance(new Arena2026Rebuilt());
+        SimulatedArena.overrideInstance(new Robot8793Arena());
 
         mapleSimSwerveDrivetrain = new MapleSimSwerveDrivetrain(
             Seconds.of(kSimLoopPeriod),
@@ -311,7 +311,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
             Inches.of(30),               // bumper width
             DCMotor.getKrakenX60(1),     // drive motor
             DCMotor.getKrakenX60(1),     // steer motor
-            1.2,                         // wheel COF
+            1.5,                         // wheel COF (WCP molded tread)
             getModuleLocations(),
             getPigeon2(),
             getModules(),
@@ -330,7 +330,11 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         // those walls. That makes the robot feel like it's dragging until it fully clears the
         // corner. Start somewhere clearly inside the field instead; any real pose reset (auto
         // start, vision correction) will immediately override this anyway.
-        resetPose(new Pose2d(3.6, 4.1, Rotation2d.k180deg));
+        //
+        // This is the red-side mirror of the original safe blue spawn (3.6, 4.1, 180°), using the
+        // field's real dimensions from Arena2026Rebuilt's obstacle map (16.540988 x 8.052) —
+        // matches the robot's actual alliance instead of spawning on blue's side.
+        resetPose(new Pose2d(12.940988, 3.952, Rotation2d.kZero));
     }
 
     /**

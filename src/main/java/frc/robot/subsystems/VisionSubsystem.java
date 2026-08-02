@@ -361,6 +361,11 @@ public class VisionSubsystem extends SubsystemBase {
         // Scale standard deviations based on distance
         // Further tags = less confidence = higher standard deviations
         double scale = 1.0 + (avgDistance * avgDistance / 30.0);
+        if (RobotBase.isSimulation()) {
+            // Simulated cameras are far less noisy than real ones — trust them more so odometry
+            // drift actually recovers at a reasonable rate during sim testing.
+            scale *= VisionConstants.SIM_STD_DEV_SCALE_FACTOR;
+        }
 
         return VecBuilder.fill(
             base.get(0, 0) * scale,

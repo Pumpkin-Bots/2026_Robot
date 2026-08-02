@@ -31,6 +31,7 @@ public class Robot extends TimedRobot {
         m_robotContainer.updateMechanismTelemetry();
         m_robotContainer.updateSimulation();
         m_robotContainer.updateAutoFire();
+        m_robotContainer.updateIntakeAutoFire();
     }
 
     @Override

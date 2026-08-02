@@ -63,7 +63,7 @@ public class ShuttleMode extends Command {
         double targetY = (robotY > tagY) ? tagY + 2.5 : tagY - 2.5;
 
         Translation3d targetPosition = new Translation3d(targetX, targetY, targetZ);
-        m_Shooter.calculateShooterActions(targetPosition);
+        m_Shooter.calculatePhysicsShooterActions(targetPosition);
         if (m_timer.hasElapsed(0.75)) {
             m_GroundIntake.neutralMode();
         }

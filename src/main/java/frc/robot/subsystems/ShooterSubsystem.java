@@ -10,6 +10,7 @@ import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.sim.TalonFXSimState;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
@@ -393,7 +394,128 @@ public class ShooterSubsystem implements Subsystem {
         setTurretRotatorAngle(turretAngleDeg);
         setShooterFlywheelVelocity(flywheelMotorRPS);
     }
-       
+
+    // Matches GamePieceProjectile.GRAVITY in maple-sim (org.ironmaple.simulation.gamepieces),
+    // which uses 11 m/s^2 instead of real gravity (9.81) to compensate for the simulation
+    // ignoring air drag. Using the same constant means this math's predicted trajectory matches
+    // what the simulated projectile actually does. Once you have real-world test data, this is
+    // one of the first constants to recalibrate — real air drag behaves differently from a
+    // flat gravity fudge factor, especially at higher speeds/longer shots.
+    private static final double PHYSICS_GRAVITY_MPS2 = 11.0;
+
+    // How much steeper than the pure minimum-energy angle to aim. The minimum-energy angle hits
+    // the target exactly at the apex of its arc (zero vertical velocity) — a knife's-edge case
+    // that, especially at close range, can end up arriving on the way UP instead of down. Biasing
+    // steeper guarantees the ball is still descending when it reaches the target, so it drops
+    // into the hub rather than skimming the rim on the way up.
+    private static final double DESCENT_MARGIN_DEG = 12.0;
+
+    /**
+     * Computes turret angle, rack angle, and flywheel speed entirely from projectile physics
+     * (no lookup tables), including proper shoot-on-the-move compensation via vector subtraction:
+     *
+     * <ol>
+     *   <li>Pick an elevation angle steeper than the minimum-energy ballistic angle (see
+     *       {@link #DESCENT_MARGIN_DEG}) so the shot arrives descending, clamped to what the
+     *       rack can achieve.
+     *   <li>Solve for the exact launch speed that hits the target at that angle, from the
+     *       no-air-resistance projectile range equation.
+     *   <li>Build the resulting stationary-shot velocity as a 3D field-relative vector.
+     *   <li>Subtract the launch point's current field-relative velocity (chassis translation
+     *       plus the extra ground speed the off-center launch point picks up from chassis
+     *       rotation) from that vector. What's left is the velocity the shooter itself must
+     *       impart, relative to the moving robot, so that the ball's actual field-relative
+     *       velocity matches the stationary solution and it hits the same target.
+     *   <li>Convert that resulting vector back into turret angle, rack angle, and flywheel RPS.
+     * </ol>
+     *
+     * <p>This assumes ideal conditions matching maple-sim's own physics (no air drag, no wheel
+     * slip on the flywheel/ball interface, instantaneous flywheel response) — expect to need a
+     * fudge factor or two once you have real test-shot data to compare against.
+     *
+     * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
+     */
+    public void calculatePhysicsShooterActions(Translation3d targetPosition) {
+        Pose2d robotPose = m_drivetrain.getState().Pose;
+        ChassisSpeeds fieldRelativeSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
+            m_drivetrain.getState().Speeds, robotPose.getRotation());
+        Translation3d launchPosition = calculateLaunchPosition(robotPose);
+
+        double dx = targetPosition.getX() - launchPosition.getX();
+        double dy = targetPosition.getY() - launchPosition.getY();
+        double dz = targetPosition.getZ() - launchPosition.getZ();
+        double horizontalDist = Math.hypot(dx, dy);
+        double bearingToTargetRad = Math.atan2(dy, dx);
+
+        // Minimum-energy ballistic angle for a target at (horizontalDist, dz) relative to the
+        // launch point, biased steeper by DESCENT_MARGIN_DEG so the ball is guaranteed to be
+        // descending on arrival, then clamped to the rack's achievable range (RACK_MIN/MAX_ANGLE,
+        // converted via launch_angle = 90 - rack_angle).
+        double minEnergyLaunchAngleRad = Math.PI / 4 + 0.5 * Math.atan2(dz, horizontalDist);
+        double desiredLaunchAngleRad = minEnergyLaunchAngleRad + Math.toRadians(DESCENT_MARGIN_DEG);
+        double flattestLaunchAngleRad = Math.toRadians(90.0 - Constants.ShooterConstants.RACK_MAX_ANGLE);
+        double steepestLaunchAngleRad = Math.toRadians(90.0 - Constants.ShooterConstants.RACK_MIN_ANGLE);
+        double launchAngleRad = MathUtil.clamp(desiredLaunchAngleRad, flattestLaunchAngleRad, steepestLaunchAngleRad);
+
+        // Required speed to hit the target at this angle, from the no-drag projectile range
+        // equation: dz = d*tan(theta) - g*d^2 / (2*v^2*cos^2(theta)), solved for v.
+        double denominator = horizontalDist * Math.tan(launchAngleRad) - dz;
+        if (denominator <= 0) {
+            // Target unreachable at this angle (too steep a climb for the distance) — fall back
+            // to the steepest achievable angle and accept an imperfect shot rather than NaN out.
+            launchAngleRad = steepestLaunchAngleRad;
+            denominator = Math.max(1e-6, horizontalDist * Math.tan(launchAngleRad) - dz);
+        }
+        double cosAngle = Math.cos(launchAngleRad);
+        double stationarySpeedMPS = Math.sqrt(
+            PHYSICS_GRAVITY_MPS2 * horizontalDist * horizontalDist / (2 * cosAngle * cosAngle * denominator));
+
+        // Stationary-shot velocity as a field-relative 3D vector.
+        double stationaryHorizontalSpeed = stationarySpeedMPS * cosAngle;
+        Translation3d stationaryVelocity = new Translation3d(
+            stationaryHorizontalSpeed * Math.cos(bearingToTargetRad),
+            stationaryHorizontalSpeed * Math.sin(bearingToTargetRad),
+            stationarySpeedMPS * Math.sin(launchAngleRad));
+
+        // The launch point's own field-relative velocity: chassis translation, plus the extra
+        // ground speed it picks up from chassis rotation since it's offset from robot center
+        // (same lever-arm calculation as calculateVirtualTargetPosition above).
+        double omega = fieldRelativeSpeeds.omegaRadiansPerSecond;
+        double rx = Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS;
+        double ry = Constants.ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS;
+        double heading = robotPose.getRotation().getRadians();
+        double launchPointVelX = fieldRelativeSpeeds.vxMetersPerSecond
+            + (-rx * Math.sin(heading) - ry * Math.cos(heading)) * omega;
+        double launchPointVelY = fieldRelativeSpeeds.vyMetersPerSecond
+            + ( rx * Math.cos(heading) - ry * Math.sin(heading)) * omega;
+
+        // Subtract the launch point's velocity from the stationary solution — what remains is
+        // what the shooter must impart, relative to the moving robot, to reproduce that exact
+        // field-relative velocity.
+        Translation3d shooterRelativeVelocity = new Translation3d(
+            stationaryVelocity.getX() - launchPointVelX,
+            stationaryVelocity.getY() - launchPointVelY,
+            stationaryVelocity.getZ());
+
+        double actualSpeedMPS = shooterRelativeVelocity.getNorm();
+        double actualHorizontalSpeed = Math.hypot(shooterRelativeVelocity.getX(), shooterRelativeVelocity.getY());
+        double actualLaunchAngleRad = Math.atan2(shooterRelativeVelocity.getZ(), actualHorizontalSpeed);
+        double actualBearingRad = Math.atan2(shooterRelativeVelocity.getY(), shooterRelativeVelocity.getX());
+
+        double turretAngleDeg = Math.toDegrees(actualBearingRad) - robotPose.getRotation().getDegrees();
+        double rackAngleDeg = 90.0 - Math.toDegrees(actualLaunchAngleRad);
+        double flywheelMotorRPS = actualSpeedMPS / (Math.PI * Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS);
+
+        SmartDashboard.putNumber("Shooter/Physics/TurretAngleDeg", turretAngleDeg);
+        SmartDashboard.putNumber("Shooter/Physics/RackAngleDeg", rackAngleDeg);
+        SmartDashboard.putNumber("Shooter/Physics/FlywheelMotorRPS", flywheelMotorRPS);
+        SmartDashboard.putNumber("Shooter/Physics/LaunchSpeedMPS", actualSpeedMPS);
+        SmartDashboard.putNumber("Shooter/Physics/HorizontalDist", horizontalDist);
+
+        setShooterRackAngle(rackAngleDeg);
+        setTurretRotatorAngle(turretAngleDeg);
+        setShooterFlywheelVelocity(flywheelMotorRPS);
+    }
 
     /**
      * Converts a turret angle in degrees to motor rotations.
@@ -520,7 +642,10 @@ public class ShooterSubsystem implements Subsystem {
             return;
         }
 
-        Pose2d robotPose = m_drivetrain.getState().Pose;
+        // Use maple-sim's true simulated pose, not the odometry estimate (getState().Pose) —
+        // odometry can drift (e.g. from wheel slip), and launching from where the robot actually
+        // is matters more here than being consistent with what the robot's own sensors believe.
+        Pose2d robotPose = m_drivetrain.getSimulatedGroundTruthPose().orElse(m_drivetrain.getState().Pose);
         ChassisSpeeds fieldRelativeSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
             m_drivetrain.getState().Speeds, robotPose.getRotation());
 

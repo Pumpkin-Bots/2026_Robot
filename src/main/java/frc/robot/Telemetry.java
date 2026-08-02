@@ -23,7 +23,8 @@ import edu.wpi.first.networktables.NetworkTableInstance;
 import edu.wpi.first.networktables.StringPublisher;
 import edu.wpi.first.networktables.StructArrayPublisher;
 import edu.wpi.first.networktables.StructPublisher;
-import edu.wpi.first.units.Units;
+import edu.wpi.first.wpilibj.DriverStation;
+import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.smartdashboard.Mechanism2d;
 import edu.wpi.first.wpilibj.smartdashboard.MechanismLigament2d;
@@ -113,6 +114,9 @@ public class Telemetry {
      * the odometry ESTIMATE and can drift from wheel slip. Useful as a second "Ghost" robot in
      * AdvantageScope to see when/how far the two diverge. */
     private final StructPublisher<Pose2d> groundTruthPose = fieldSimTable.getStructTopic("RobotGroundTruthPose", Pose2d.struct).publish();
+
+    /* Count of fuel scored (not wasted) in our alliance's hub, per maple-sim's scorekeeping. */
+    private final IntegerPublisher fuelScoredCount = fieldSimTable.getIntegerTopic("FuelScored").publish();
     // Wheel radius (2 in) — height of each wheel's center above the floor. Placeholder if your
     // actual wheel radius differs from TunerConstants' kWheelRadius.
     private static final double kWheelCenterHeightMeters = 0.0508;
@@ -120,37 +124,38 @@ public class Telemetry {
     // zero-angle convention. Flip the sign if the wheels end up turned the wrong way.
     private static final double kWheelYawOffsetRadians = Math.PI / 2;
 
-    // Turret rotation axis's offset from robot center (X forward, Y left, Z up) — placeholder,
-    // reused from ShooterConstants' ball-launch offsets since no dedicated turret-axis
-    // measurement exists yet. Replace once you have the real pivot location from CAD.
+    // Turret rotation axis's offset from robot center (X forward, Y left, Z up), measured from
+    // CAD. The model's local origin is now centered on this same pivot axis (CAD export fixed),
+    // so rotation correctly happens about this point instead of needing a separate workaround —
+    // but the position itself is still real mounting geometry and must still be supplied.
     private static final Translation3d kTurretPivotOffsetMeters = new Translation3d(-0.114, 0.0, 0.3);
     // Same mesh-alignment correction as the wheels, applied to the turret (and rack, since it
     // rides on the turret and shares the same mesh-forward convention). Positive yaw rotates
-    // toward +Y (left) per WPILib's convention, so an extra 45° was added here to correct it
-    // further left on top of the base 90°.
-    private static final double kTurretYawOffsetRadians = Math.PI / 2 + Math.PI / 4;
-    // The rack's mount point relative to the turret's own rotation axis, before the turret
-    // spins it — placeholder. This gets rotated by the turret's actual angle each loop, since
-    // the rack physically sweeps around with the turret.
-    private static final Translation3d kRackMountOffsetMeters = new Translation3d(0.1, 0.0, 0.15);
+    // toward +Y (left) per WPILib's convention. Was 90+45=135°; offset another 135° further left
+    // on top of that, for 270° total.
+    private static final double kTurretYawOffsetRadians = Math.PI / 2 + Math.PI / 4 + 3 * Math.PI / 4;
+    // The rack's mount point relative to the turret's own rotation axis, before the turret spins
+    // it — measured as 5 in backward, 9 in left, 2.3 in up. This gets rotated by the turret's
+    // actual angle each loop, since the rack physically sweeps around with the turret. The rack's
+    // own model origin is its rotation axis, matching the turret/intake CAD fix.
+    private static final Translation3d kRackMountOffsetMeters = new Translation3d(-0.127, 0.2286, 0.05842);
 
-    // Ground intake pivot axis's offset from robot center. Originally (11.75in forward, 0, 11.24in
-    // up) from CAD measurements, but that rendered ~11in too high and ~11in too far left — close
-    // enough in magnitude to both original values that the model's native position likely already
-    // accounts for most of the height, and the lateral value landed on the wrong axis. Adjusted
-    // as a best-effort correction; still an estimate, expect to keep tuning this by eye.
-    private static final Translation3d kIntakePivotOffsetMeters = new Translation3d(
-        Units.Inches.of(11.75).in(Units.Meters), Units.Inches.of(-11).in(Units.Meters), 0.0);
+    // Ground intake pivot axis's offset from robot center (11.75 in forward, 13.24 in up, and
+    // laterally 14 in left — was 11 in right, shifted 25 in further left per the latest
+    // correction). The model's local origin is now centered on this same pivot axis (CAD export
+    // fixed), so rotation correctly happens about this point — but the position itself is still
+    // real mounting geometry and must still be supplied.
+    private static final Translation3d kIntakePivotOffsetMeters = new Translation3d(0.29845, 0.3556, 0.336289);
     // The imported CAD model was authored showing the intake already in its DOWN/deployed
     // position (PIVOT_DOWN_ROTATIONS), not the UP/stowed rest position (0 rotations) that
     // intakePivotAngleDeg is measured from — so this constant offset rotates the model's
     // authored pose back to matching 0° = up.
     private static final double kIntakeAngleOffsetDegrees =
         -Constants.GroundIntakeConstants.PIVOT_DOWN_ROTATIONS * 360.0;
-    // The whole intake assembly's authored "forward" faces sideways instead of forward — a fixed
-    // yaw correction, separate from the dynamic elevation pivot above. Flip the sign if it ends
-    // up facing backward instead.
-    private static final double kIntakeYawOffsetRadians = Math.PI / 2;
+    // The model is mirrored/upside-down along its own long axis — a fixed 180 deg roll correction.
+    private static final double kIntakeRollOffsetRadians = Math.PI;
+    // Additional fixed 180 deg pitch correction, on top of the dynamic elevation pitch above.
+    private static final double kIntakePitchOffsetRadians = Math.PI;
 
     /* Mechanisms to represent the swerve module states */
     private final Mechanism2d[] m_moduleMechanisms = new Mechanism2d[] {
@@ -269,14 +274,15 @@ public class Telemetry {
         m_componentPoseArray[1] = new Pose3d(
             rackPosition, new Rotation3d(-Math.toRadians(rackAngleDeg), 0, turretYawForRender));
 
-        // Elevation pivots about local X (roll), not Y (pitch) — same authored-axis mismatch as
-        // the rack. kIntakeAngleOffsetDegrees corrects for the CAD model's rest pose being
-        // authored at the DOWN position instead of 0deg/up. Sign flipped from the first attempt —
-        // the other direction swung it past "up" into upside-down/underground instead.
+        // Pure pitch, no roll or yaw — the model's own forward/up axes are already correct after
+        // the CAD fix, so the only rotation needed is pitching up from the authored DOWN pose to
+        // the actual current angle. kIntakeAngleOffsetDegrees handles that authored-pose correction.
         m_componentPoseArray[2] = new Pose3d(
             kIntakePivotOffsetMeters,
             new Rotation3d(
-                Math.toRadians(intakePivotAngleDeg + kIntakeAngleOffsetDegrees), 0, kIntakeYawOffsetRadians));
+                kIntakeRollOffsetRadians,
+                Math.toRadians(intakePivotAngleDeg + kIntakeAngleOffsetDegrees) + kIntakePitchOffsetRadians,
+                0));
         // Each wheel's translation is baked into this same Pose3d, not into the model asset's
         // zeroedPosition — AdvantageScope applies a component's zeroedPosition and its logged
         // rotation in an order that pivots around the robot's origin, not the component's own
@@ -314,6 +320,18 @@ public class Telemetry {
      */
     public void updateGroundTruthPose(Pose2d groundTruthPose) {
         this.groundTruthPose.set(groundTruthPose);
+    }
+
+    /**
+     * Publishes how many fuel pieces our alliance has scored (landed in the hub while it was
+     * active, i.e. actually counted for points) so far this simulated match. No-op on a real
+     * robot — maple-sim's arena is sim-only.
+     */
+    public void updateScore() {
+        if (RobotBase.isSimulation()) {
+            boolean isBlue = DriverStation.getAlliance().orElse(Alliance.Blue) == Alliance.Blue;
+            fuelScoredCount.set(SimulatedArena.getInstance().getScore(isBlue));
+        }
     }
 
     /**
