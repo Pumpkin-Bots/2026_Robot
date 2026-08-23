@@ -10,7 +10,6 @@ import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.sim.TalonFXSimState;
 
-import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
 import edu.wpi.first.math.geometry.Translation2d;
@@ -27,6 +26,10 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import frc.robot.constants.Constants;
+import frc.robot.utils.AimSolver;
+import frc.robot.utils.AimSolver.AimSolution;
+import frc.robot.utils.ShooterTuning;
+import frc.robot.utils.TunableDouble;
 
 import org.ironmaple.simulation.SimulatedArena;
 import org.ironmaple.simulation.seasonspecific.rebuilt2026.RebuiltFuelOnFly;
@@ -37,8 +40,11 @@ public class ShooterSubsystem implements Subsystem {
     private final TalonFX m_shooterRackMotor;
     private final TalonFX m_shooterFlywheelMotor;
     private final CommandSwerveDrivetrain m_drivetrain;
+    private final VelocityEstimator m_velocityEstimator;
+    private final ShooterTuning m_tuning = new ShooterTuning();
     private boolean m_turretZeroed = false;
     private double m_lastCommandedTurretAngle = 0.0;
+    private AimSolution m_lastSolution = null;
 
     // ---- Simulation ----
     // The turret and rack skip physics simulation entirely and just snap their simulated
@@ -56,13 +62,23 @@ public class ShooterSubsystem implements Subsystem {
 
     // ---- Live PID tuning via SmartDashboard (turret only for now) ----
     // Slot0Configs below are normally baked in once at startup, so testing a new gain would
-    // otherwise mean editing Constants, recompiling, and redeploying every time. Reading these
-    // back each loop lets you drag a "Turret/kP" etc. slider on Shuffleboard/Glass/Elastic and
-    // see the response change live instead.
-    private double m_tunedTurretKP = Constants.ShooterConstants.ROTATOR_KP;
-    private double m_tunedTurretKI = Constants.ShooterConstants.ROTATOR_KI;
-    private double m_tunedTurretKD = Constants.ShooterConstants.ROTATOR_KD;
-    private double m_tunedTurretKV = Constants.ShooterConstants.ROTATOR_KV;
+    // otherwise mean editing Constants, recompiling, and redeploying every time. These follow the
+    // same TuningMode switch as every other tunable: dashboard values only apply while it is on.
+    private final TunableDouble m_turretKP =
+        new TunableDouble("Tuning/Turret/kP", Constants.ShooterConstants.ROTATOR_KP);
+    private final TunableDouble m_turretKI =
+        new TunableDouble("Tuning/Turret/kI", Constants.ShooterConstants.ROTATOR_KI);
+    private final TunableDouble m_turretKD =
+        new TunableDouble("Tuning/Turret/kD", Constants.ShooterConstants.ROTATOR_KD);
+    private final TunableDouble m_turretKV =
+        new TunableDouble("Tuning/Turret/kV", Constants.ShooterConstants.ROTATOR_KV);
+
+    // Last gains actually pushed to the motor, so the config is only re-applied when something
+    // changes rather than every loop.
+    private double m_appliedTurretKP = Constants.ShooterConstants.ROTATOR_KP;
+    private double m_appliedTurretKI = Constants.ShooterConstants.ROTATOR_KI;
+    private double m_appliedTurretKD = Constants.ShooterConstants.ROTATOR_KD;
+    private double m_appliedTurretKV = Constants.ShooterConstants.ROTATOR_KV;
 
     private static final Slot0Configs turretRotatorGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.ROTATOR_KP)
@@ -203,8 +219,9 @@ public class ShooterSubsystem implements Subsystem {
 
     }
 
-    public ShooterSubsystem(CommandSwerveDrivetrain drivetrain) {
+    public ShooterSubsystem(CommandSwerveDrivetrain drivetrain, VelocityEstimator velocityEstimator) {
         m_drivetrain = drivetrain;
+        m_velocityEstimator = velocityEstimator;
 
         m_turretRotatorMotor = new TalonFX(Constants.ShooterConstants.TURRET_ROTATOR_ID);
         m_shooterRackMotor = new TalonFX(Constants.ShooterConstants.SHOOTER_RACK_ID);
@@ -216,11 +233,6 @@ public class ShooterSubsystem implements Subsystem {
         // Position is read back for mechanism telemetry/3D visualization, so request it explicitly.
         m_turretRotatorMotor.getPosition().setUpdateFrequency(50);
         m_turretRotatorMotor.optimizeBusUtilization();
-
-        SmartDashboard.putNumber("Turret/kP", m_tunedTurretKP);
-        SmartDashboard.putNumber("Turret/kI", m_tunedTurretKI);
-        SmartDashboard.putNumber("Turret/kD", m_tunedTurretKD);
-        SmartDashboard.putNumber("Turret/kV", m_tunedTurretKV);
 
         m_shooterRackMotor.getConfigurator().apply(rackGains);
         m_shooterRackMotor.getConfigurator().apply(rackSoftLimits);
@@ -251,90 +263,75 @@ public class ShooterSubsystem implements Subsystem {
      */
     private Translation3d calculateLaunchPosition(Pose2d robotPose) {
         double heading = robotPose.getRotation().getRadians();
-        double rx = Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS;
-        double ry = Constants.ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS;
+        double rx = m_tuning.launchForwardOffsetMeters();
+        double ry = m_tuning.launchLeftOffsetMeters();
         return new Translation3d(
             robotPose.getX() + rx * Math.cos(heading) - ry * Math.sin(heading),
             robotPose.getY() + rx * Math.sin(heading) + ry * Math.cos(heading),
-            Constants.ShooterConstants.BALL_LAUNCH_HEIGHT_METERS);
+            m_tuning.launchHeightMeters());
     }
 
     /**
-     * Computes a virtual target position that compensates for robot motion and
-     * turret-indexer spin during projectile flight time. Uses iterative refinement
-     * with flight time from the empirical lookup table.
+     * Field-relative velocity of the ball's launch point.
      *
-     * <p>Because the turret is off-center, robot rotation adds a linear velocity
-     * component at the launch point. The full launch-point velocity is:
-     * <pre>
-     *   v_launch_x = v_robot_x + (-rx·sin(θ) - ry·cos(θ))·ω
-     *   v_launch_y = v_robot_y + ( rx·cos(θ) - ry·sin(θ))·ω
-     * </pre>
-     * where rx/ry are the forward/lateral offsets of the turret from robot center,
-     * θ is the robot heading, and ω is the robot's angular velocity.
+     * <p>This is not the same as the robot's velocity. The launch point sits off the robot's center,
+     * so chassis rotation swings it through an arc, giving it ground speed the chassis itself does
+     * not have. Aiming against the chassis velocity instead would put every shot fired while turning
+     * off to one side.
+     */
+    private Translation2d calculateLaunchPointVelocity(Pose2d robotPose) {
+        ChassisSpeeds fieldSpeeds = m_velocityEstimator.getFieldRelativeSpeeds();
+        double omega = fieldSpeeds.omegaRadiansPerSecond;
+        double rx = m_tuning.launchForwardOffsetMeters();
+        double ry = m_tuning.launchLeftOffsetMeters();
+        double heading = robotPose.getRotation().getRadians();
+        return new Translation2d(
+            fieldSpeeds.vxMetersPerSecond
+                + (-rx * Math.sin(heading) - ry * Math.cos(heading)) * omega,
+            fieldSpeeds.vyMetersPerSecond
+                + ( rx * Math.cos(heading) - ry * Math.sin(heading)) * omega);
+    }
+
+    /**
+     * Computes a virtual target position that compensates for launch-point motion and the feeder's
+     * push during projectile flight. Uses iterative refinement with flight time from the empirical
+     * lookup table.
      *
-     * <p>The indexer imparts spin on the ball that creates an effective extra velocity
-     * component. The along-barrel component scales as cos(turretAngle) and the
-     * perpendicular component (left/right from the turret's perspective) scales as
-     * sin(turretAngle). Both are rotated into field coordinates and applied as
-     * additional velocity offsets so the aim point corrects for spin drift.
+     * <p>Used only by the lookup-table aiming path ({@link #calculateShooterActions}). The physics
+     * path corrects for the same two effects by vector subtraction instead — see {@link AimSolver}.
      *
-     * @param targetPosition      field-relative 3D position of the actual target
-     * @param launchPosition      field-relative 3D position of the ball at launch
-     * @param fieldRelativeSpeeds robot velocity in field-relative coordinates (vx, vy, omega)
-     * @param robotHeadingRad     robot heading in radians (field-relative)
-     * @return adjusted 3D aim point that accounts for robot drift and spin during flight
+     * @param targetPosition  field-relative 3D position of the actual target
+     * @param launchPosition  field-relative 3D position of the ball at launch
+     * @param launchPointVel  field-relative velocity of the launch point
+     * @param robotHeadingRad robot heading in radians (field-relative)
+     * @return adjusted 3D aim point that accounts for drift during flight
      */
     private Translation3d calculateVirtualTargetPosition(
             Translation3d targetPosition,
             Translation3d launchPosition,
-            ChassisSpeeds fieldRelativeSpeeds,
+            Translation2d launchPointVel,
             double robotHeadingRad) {
-        // Compute the launch point's actual field-relative velocity.
-        // Robot rotation adds a linear velocity at the turret because it is off-center.
-        double omega = fieldRelativeSpeeds.omegaRadiansPerSecond;
-        double rx = Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS;
-        double ry = Constants.ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS;
-        double launchVelX = fieldRelativeSpeeds.vxMetersPerSecond
-            + (-rx * Math.sin(robotHeadingRad) - ry * Math.cos(robotHeadingRad)) * omega;
-        double launchVelY = fieldRelativeSpeeds.vyMetersPerSecond
-            + ( rx * Math.cos(robotHeadingRad) - ry * Math.sin(robotHeadingRad)) * omega;
+        var tuning = m_tuning.snapshot();
+        double cosH = Math.cos(robotHeadingRad);
+        double sinH = Math.sin(robotHeadingRad);
+
+        double motionDriftX = launchPointVel.getX() * tuning.shootOnTheMoveGain();
+        double motionDriftY = launchPointVel.getY() * tuning.shootOnTheMoveGain();
 
         Translation3d virtualTarget = targetPosition;
         for (int i = 0; i < 10; i++) {
             double dx = virtualTarget.getX() - launchPosition.getX();
             double dy = virtualTarget.getY() - launchPosition.getY();
-            double horizontalDist = Math.hypot(dx, dy);
-            double flightTime = flightTimeTable.get(horizontalDist);
+            double flightTime = flightTimeTable.get(Math.hypot(dx, dy));
 
-            // Barrel direction in field frame and turret angle relative to robot
-            double barrelAngleRad = Math.atan2(dy, dx);
-            double turretAngleRad = barrelAngleRad - robotHeadingRad;
+            // The feeder's push depends on where the turret ends up pointing, so it is recomputed
+            // from the current aim each pass rather than hoisted out of the loop.
+            double turretAngleRad = Math.atan2(dy, dx) - robotHeadingRad;
+            double push = AimSolver.feederPushForwardMps(turretAngleRad, tuning);
 
-            // Spin drift distances along and perpendicular to the shot-path line:
-            //   spinAlongBarrel > 0  →  ball lands further from turret than expected
-            //   spinLeftOfBarrel > 0  →  ball drifts left of the shot path
-            double spinAlongBarrel  = Constants.TurretConstants.INDEXER_SPIN_FORWARD_BACK_MAX_MS
-                * Math.cos(turretAngleRad) * flightTime;
-            double spinLeftOfBarrel = Constants.TurretConstants.INDEXER_SPIN_LEFT_RIGHT_MAX_MS
-                * Math.sin(turretAngleRad) * flightTime;
-
-            // Unit vectors in field frame: along barrel (toward target) and left of barrel
-            double barrelX =  Math.cos(barrelAngleRad);
-            double barrelY =  Math.sin(barrelAngleRad);
-            double leftX   = -Math.sin(barrelAngleRad);
-            double leftY   =  Math.cos(barrelAngleRad);
-
-            // Shift virtual target opposite to launch-point velocity and spin drift
             virtualTarget = new Translation3d(
-                targetPosition.getX()
-                    - launchVelX * flightTime
-                    - spinAlongBarrel  * barrelX
-                    - spinLeftOfBarrel * leftX,
-                targetPosition.getY()
-                    - launchVelY * flightTime
-                    - spinAlongBarrel  * barrelY
-                    - spinLeftOfBarrel * leftY,
+                targetPosition.getX() - (motionDriftX + push * cosH) * flightTime,
+                targetPosition.getY() - (motionDriftY + push * sinH) * flightTime,
                 targetPosition.getZ());
         }
         return virtualTarget;
@@ -358,16 +355,15 @@ public class ShooterSubsystem implements Subsystem {
      */
     public void calculateShooterActions(Translation3d targetPosition) {
         Pose2d robotPose = m_drivetrain.getState().Pose;
-        ChassisSpeeds fieldRelativeSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
-            m_drivetrain.getState().Speeds, robotPose.getRotation());
         Translation3d launchPosition = calculateLaunchPosition(robotPose);
+        Translation2d launchPointVel = calculateLaunchPointVelocity(robotPose);
 
         double distance = getDistanceToTarget(targetPosition, launchPosition);
         double rackAngleDeg = rackAngleTable.get(distance);
         double flywheelMotorRPS = flywheelRPSTable.get(distance);
 
         Translation3d virtualTarget = calculateVirtualTargetPosition(
-            targetPosition, launchPosition, fieldRelativeSpeeds, robotPose.getRotation().getRadians());
+            targetPosition, launchPosition, launchPointVel, robotPose.getRotation().getRadians());
 
         // Turret: field-relative angle to virtual target, converted to robot-relative
         double dx = virtualTarget.getX() - launchPosition.getX();
@@ -395,126 +391,79 @@ public class ShooterSubsystem implements Subsystem {
         setShooterFlywheelVelocity(flywheelMotorRPS);
     }
 
-    // Matches GamePieceProjectile.GRAVITY in maple-sim (org.ironmaple.simulation.gamepieces),
-    // which uses 11 m/s^2 instead of real gravity (9.81) to compensate for the simulation
-    // ignoring air drag. Using the same constant means this math's predicted trajectory matches
-    // what the simulated projectile actually does. Once you have real-world test data, this is
-    // one of the first constants to recalibrate — real air drag behaves differently from a
-    // flat gravity fudge factor, especially at higher speeds/longer shots.
-    private static final double PHYSICS_GRAVITY_MPS2 = 11.0;
+    /**
+     * Solves for a firing solution against a field target without commanding anything.
+     *
+     * <p>Separate from {@link #calculatePhysicsShooterActions} so a solution can be inspected — is
+     * the shot even achievable from here? — without moving a motor.
+     *
+     * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
+     */
+    public AimSolution solveAim(Translation3d targetPosition) {
+        Pose2d robotPose = m_drivetrain.getState().Pose;
+        Translation3d launchPosition = calculateLaunchPosition(robotPose);
+        Translation2d launchPointVel = calculateLaunchPointVelocity(robotPose);
 
-    // How much steeper than the pure minimum-energy angle to aim. The minimum-energy angle hits
-    // the target exactly at the apex of its arc (zero vertical velocity) — a knife's-edge case
-    // that, especially at close range, can end up arriving on the way UP instead of down. Biasing
-    // steeper guarantees the ball is still descending when it reaches the target, so it drops
-    // into the hub rather than skimming the rim on the way up.
-    private static final double DESCENT_MARGIN_DEG = 12.0;
+        return AimSolver.solve(
+            targetPosition,
+            launchPosition,
+            robotPose.getRotation().getRadians(),
+            launchPointVel.getX(),
+            launchPointVel.getY(),
+            m_tuning.snapshot());
+    }
 
     /**
-     * Computes turret angle, rack angle, and flywheel speed entirely from projectile physics
-     * (no lookup tables), including proper shoot-on-the-move compensation via vector subtraction:
+     * Computes turret angle, rack angle, and flywheel speed entirely from projectile physics (no
+     * lookup tables) and commands the mechanism to match. See {@link AimSolver} for the math.
      *
-     * <ol>
-     *   <li>Pick an elevation angle steeper than the minimum-energy ballistic angle (see
-     *       {@link #DESCENT_MARGIN_DEG}) so the shot arrives descending, clamped to what the
-     *       rack can achieve.
-     *   <li>Solve for the exact launch speed that hits the target at that angle, from the
-     *       no-air-resistance projectile range equation.
-     *   <li>Build the resulting stationary-shot velocity as a 3D field-relative vector.
-     *   <li>Subtract the launch point's current field-relative velocity (chassis translation
-     *       plus the extra ground speed the off-center launch point picks up from chassis
-     *       rotation) from that vector. What's left is the velocity the shooter itself must
-     *       impart, relative to the moving robot, so that the ball's actual field-relative
-     *       velocity matches the stationary solution and it hits the same target.
-     *   <li>Convert that resulting vector back into turret angle, rack angle, and flywheel RPS.
-     * </ol>
-     *
-     * <p>This assumes ideal conditions matching maple-sim's own physics (no air drag, no wheel
-     * slip on the flywheel/ball interface, instantaneous flywheel response) — expect to need a
-     * fudge factor or two once you have real test-shot data to compare against.
+     * <p>The robot velocity used for shoot-on-the-move comes from {@link VelocityEstimator}, which
+     * leads with the Pigeon 2's accelerometer rather than wheel odometry — the ball leaves the
+     * shooter in the moment the robot changes direction, which is exactly when wheel odometry is
+     * least trustworthy.
      *
      * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
      */
     public void calculatePhysicsShooterActions(Translation3d targetPosition) {
-        Pose2d robotPose = m_drivetrain.getState().Pose;
-        ChassisSpeeds fieldRelativeSpeeds = ChassisSpeeds.fromRobotRelativeSpeeds(
-            m_drivetrain.getState().Speeds, robotPose.getRotation());
-        Translation3d launchPosition = calculateLaunchPosition(robotPose);
+        AimSolution solution = solveAim(targetPosition);
+        m_lastSolution = solution;
+        publishAimTelemetry(solution);
 
-        double dx = targetPosition.getX() - launchPosition.getX();
-        double dy = targetPosition.getY() - launchPosition.getY();
-        double dz = targetPosition.getZ() - launchPosition.getZ();
-        double horizontalDist = Math.hypot(dx, dy);
-        double bearingToTargetRad = Math.atan2(dy, dx);
+        setShooterRackAngle(solution.rackAngleDeg());
+        setTurretRotatorAngle(solution.turretAngleDeg());
+        setShooterFlywheelVelocity(solution.flywheelRps());
+    }
 
-        // Minimum-energy ballistic angle for a target at (horizontalDist, dz) relative to the
-        // launch point, biased steeper by DESCENT_MARGIN_DEG so the ball is guaranteed to be
-        // descending on arrival, then clamped to the rack's achievable range (RACK_MIN/MAX_ANGLE,
-        // converted via launch_angle = 90 - rack_angle).
-        double minEnergyLaunchAngleRad = Math.PI / 4 + 0.5 * Math.atan2(dz, horizontalDist);
-        double desiredLaunchAngleRad = minEnergyLaunchAngleRad + Math.toRadians(DESCENT_MARGIN_DEG);
-        double flattestLaunchAngleRad = Math.toRadians(90.0 - Constants.ShooterConstants.RACK_MAX_ANGLE);
-        double steepestLaunchAngleRad = Math.toRadians(90.0 - Constants.ShooterConstants.RACK_MIN_ANGLE);
-        double launchAngleRad = MathUtil.clamp(desiredLaunchAngleRad, flattestLaunchAngleRad, steepestLaunchAngleRad);
+    /** Most recent firing solution, or null if none has been computed yet. */
+    public AimSolution getLastSolution() {
+        return m_lastSolution;
+    }
 
-        // Required speed to hit the target at this angle, from the no-drag projectile range
-        // equation: dz = d*tan(theta) - g*d^2 / (2*v^2*cos^2(theta)), solved for v.
-        double denominator = horizontalDist * Math.tan(launchAngleRad) - dz;
-        if (denominator <= 0) {
-            // Target unreachable at this angle (too steep a climb for the distance) — fall back
-            // to the steepest achievable angle and accept an imperfect shot rather than NaN out.
-            launchAngleRad = steepestLaunchAngleRad;
-            denominator = Math.max(1e-6, horizontalDist * Math.tan(launchAngleRad) - dz);
-        }
-        double cosAngle = Math.cos(launchAngleRad);
-        double stationarySpeedMPS = Math.sqrt(
-            PHYSICS_GRAVITY_MPS2 * horizontalDist * horizontalDist / (2 * cosAngle * cosAngle * denominator));
+    /**
+     * Publishes the solution alongside what the mechanism actually did with it. The error rows are
+     * the ones that matter when a shot misses: a solution that was correct but never reached (rack
+     * still travelling, flywheel not spun up) looks nothing like a solution that was wrong.
+     */
+    private void publishAimTelemetry(AimSolution s) {
+        SmartDashboard.putNumber("Shooter/Physics/TurretAngleDeg", s.turretAngleDeg());
+        SmartDashboard.putNumber("Shooter/Physics/RackAngleDeg", s.rackAngleDeg());
+        SmartDashboard.putNumber("Shooter/Physics/FlywheelMotorRPS", s.flywheelRps());
+        SmartDashboard.putNumber("Shooter/Physics/LaunchSpeedMPS", s.launchSpeedMps());
+        SmartDashboard.putNumber("Shooter/Physics/LaunchAngleDeg", s.launchAngleDeg());
+        SmartDashboard.putNumber("Shooter/Physics/HorizontalDist", s.horizontalDistM());
+        SmartDashboard.putNumber("Shooter/Physics/FlightTimeSec", s.flightTimeS());
 
-        // Stationary-shot velocity as a field-relative 3D vector.
-        double stationaryHorizontalSpeed = stationarySpeedMPS * cosAngle;
-        Translation3d stationaryVelocity = new Translation3d(
-            stationaryHorizontalSpeed * Math.cos(bearingToTargetRad),
-            stationaryHorizontalSpeed * Math.sin(bearingToTargetRad),
-            stationarySpeedMPS * Math.sin(launchAngleRad));
+        SmartDashboard.putNumber("Shooter/Physics/TurretErrorDeg",
+            s.turretAngleDeg() - getTurretRotatorAngleDeg());
+        SmartDashboard.putNumber("Shooter/Physics/RackErrorDeg",
+            s.rackAngleDeg() - getShooterRackAngleDeg());
+        SmartDashboard.putNumber("Shooter/Physics/FlywheelErrorRPS",
+            s.flywheelRps() - getShooterFlywheelVelocityRps());
 
-        // The launch point's own field-relative velocity: chassis translation, plus the extra
-        // ground speed it picks up from chassis rotation since it's offset from robot center
-        // (same lever-arm calculation as calculateVirtualTargetPosition above).
-        double omega = fieldRelativeSpeeds.omegaRadiansPerSecond;
-        double rx = Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS;
-        double ry = Constants.ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS;
-        double heading = robotPose.getRotation().getRadians();
-        double launchPointVelX = fieldRelativeSpeeds.vxMetersPerSecond
-            + (-rx * Math.sin(heading) - ry * Math.cos(heading)) * omega;
-        double launchPointVelY = fieldRelativeSpeeds.vyMetersPerSecond
-            + ( rx * Math.cos(heading) - ry * Math.sin(heading)) * omega;
-
-        // Subtract the launch point's velocity from the stationary solution — what remains is
-        // what the shooter must impart, relative to the moving robot, to reproduce that exact
-        // field-relative velocity.
-        Translation3d shooterRelativeVelocity = new Translation3d(
-            stationaryVelocity.getX() - launchPointVelX,
-            stationaryVelocity.getY() - launchPointVelY,
-            stationaryVelocity.getZ());
-
-        double actualSpeedMPS = shooterRelativeVelocity.getNorm();
-        double actualHorizontalSpeed = Math.hypot(shooterRelativeVelocity.getX(), shooterRelativeVelocity.getY());
-        double actualLaunchAngleRad = Math.atan2(shooterRelativeVelocity.getZ(), actualHorizontalSpeed);
-        double actualBearingRad = Math.atan2(shooterRelativeVelocity.getY(), shooterRelativeVelocity.getX());
-
-        double turretAngleDeg = Math.toDegrees(actualBearingRad) - robotPose.getRotation().getDegrees();
-        double rackAngleDeg = 90.0 - Math.toDegrees(actualLaunchAngleRad);
-        double flywheelMotorRPS = actualSpeedMPS / (Math.PI * Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS);
-
-        SmartDashboard.putNumber("Shooter/Physics/TurretAngleDeg", turretAngleDeg);
-        SmartDashboard.putNumber("Shooter/Physics/RackAngleDeg", rackAngleDeg);
-        SmartDashboard.putNumber("Shooter/Physics/FlywheelMotorRPS", flywheelMotorRPS);
-        SmartDashboard.putNumber("Shooter/Physics/LaunchSpeedMPS", actualSpeedMPS);
-        SmartDashboard.putNumber("Shooter/Physics/HorizontalDist", horizontalDist);
-
-        setShooterRackAngle(rackAngleDeg);
-        setTurretRotatorAngle(turretAngleDeg);
-        setShooterFlywheelVelocity(flywheelMotorRPS);
+        SmartDashboard.putBoolean("Shooter/Physics/RackClamped", s.rackClamped());
+        SmartDashboard.putBoolean("Shooter/Physics/SpeedClamped", s.speedClamped());
+        SmartDashboard.putBoolean("Shooter/Physics/Feasible", s.feasible());
+        SmartDashboard.putBoolean("Shooter/Physics/Achievable", s.achievable());
     }
 
     /**
@@ -601,7 +550,7 @@ public class ShooterSubsystem implements Subsystem {
         m_lastCommandedTurretRotorPosition = position;
         // Counter-rotation: turret must spin at -omega to maintain field-relative aim.
         // Convert rad/s → turret rot/s → motor rot/s (gear ratio is negative, so signs cancel).
-        double omega = m_drivetrain.getState().Speeds.omegaRadiansPerSecond;
+        double omega = m_velocityEstimator.getYawRateRadPerSec();
         double motorVelRps = -omega / (2.0 * Math.PI) / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
         m_turretRotatorMotor.setControl(new PositionVoltage(position).withVelocity(motorVelRps));
     }
@@ -650,18 +599,18 @@ public class ShooterSubsystem implements Subsystem {
             m_drivetrain.getState().Speeds, robotPose.getRotation());
 
         Rotation2d shooterFacing = robotPose.getRotation().plus(Rotation2d.fromDegrees(getTurretRotatorAngleDeg()));
-        double launchSpeedMPS = Math.PI * Constants.ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS
+        double launchSpeedMPS = Math.PI * m_tuning.snapshot().flywheelDiameterMeters()
             * getShooterFlywheelVelocityRps();
         double shooterAngleDeg = 90.0 - getShooterRackAngleDeg();
 
         SimulatedArena.getInstance().addGamePieceProjectile(new RebuiltFuelOnFly(
             robotPose.getTranslation(),
             new Translation2d(
-                Constants.ShooterConstants.BALL_LAUNCH_FRONT_OFFSET_METERS,
-                Constants.ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS),
+                m_tuning.launchForwardOffsetMeters(),
+                m_tuning.launchLeftOffsetMeters()),
             fieldRelativeSpeeds,
             shooterFacing,
-            Units.Meters.of(Constants.ShooterConstants.BALL_LAUNCH_HEIGHT_METERS),
+            Units.Meters.of(m_tuning.launchHeightMeters()),
             Units.MetersPerSecond.of(launchSpeedMPS),
             Units.Degrees.of(shooterAngleDeg)
         ));
@@ -701,15 +650,18 @@ public class ShooterSubsystem implements Subsystem {
 
     @Override
     public void periodic() {
-        double kP = SmartDashboard.getNumber("Turret/kP", m_tunedTurretKP);
-        double kI = SmartDashboard.getNumber("Turret/kI", m_tunedTurretKI);
-        double kD = SmartDashboard.getNumber("Turret/kD", m_tunedTurretKD);
-        double kV = SmartDashboard.getNumber("Turret/kV", m_tunedTurretKV);
-        if (kP != m_tunedTurretKP || kI != m_tunedTurretKI || kD != m_tunedTurretKD || kV != m_tunedTurretKV) {
-            m_tunedTurretKP = kP;
-            m_tunedTurretKI = kI;
-            m_tunedTurretKD = kD;
-            m_tunedTurretKV = kV;
+        // Re-applies on any change, which includes tuning mode being switched off — the gains snap
+        // back to the compiled constants the same way every other tunable does.
+        double kP = m_turretKP.get();
+        double kI = m_turretKI.get();
+        double kD = m_turretKD.get();
+        double kV = m_turretKV.get();
+        if (kP != m_appliedTurretKP || kI != m_appliedTurretKI
+                || kD != m_appliedTurretKD || kV != m_appliedTurretKV) {
+            m_appliedTurretKP = kP;
+            m_appliedTurretKI = kI;
+            m_appliedTurretKD = kD;
+            m_appliedTurretKV = kV;
             m_turretRotatorMotor.getConfigurator().apply(
                 new Slot0Configs().withKP(kP).withKI(kI).withKD(kD).withKV(kV));
         }

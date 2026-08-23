@@ -39,6 +39,7 @@ import frc.robot.subsystems.GroundIntakeSubsystem;
 import frc.robot.subsystems.TurretSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
 import frc.robot.subsystems.LEDSubsystem;
+import frc.robot.subsystems.VelocityEstimator;
 import frc.robot.subsystems.VisionSubsystem;
 import frc.robot.subsystems.VisionSubsystem.VisionPoseEstimate;
 
@@ -64,7 +65,9 @@ public class RobotContainer {
     private final GroundIntakeSubsystem intake = new GroundIntakeSubsystem(drivetrain);
     private final VisionSubsystem vision = new VisionSubsystem(intake);
     private final TurretSubsystem turret = new TurretSubsystem();
-    private final ShooterSubsystem shooter = new ShooterSubsystem(drivetrain);
+    // Runs its filter from periodic(), which the scheduler calls whether or not a command needs it.
+    private final VelocityEstimator velocityEstimator = new VelocityEstimator(drivetrain);
+    private final ShooterSubsystem shooter = new ShooterSubsystem(drivetrain, velocityEstimator);
 
     private final LEDSubsystem leds = new LEDSubsystem();
 
