@@ -39,7 +39,7 @@ public class ShooterMode extends Command {
             targetPosition = Constants.ShooterConstants.RED_TARGET_POSITION;
         }
 
-        m_Shooter.calculateShooterActions(targetPosition);
+        m_Shooter.calculatePhysicsShooterActions(targetPosition);
 
         if (m_timer.hasElapsed(0.25)) {
             m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);

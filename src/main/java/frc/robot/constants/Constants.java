@@ -81,13 +81,59 @@ public final class Constants {
         public static final double BALL_LAUNCH_LATERAL_OFFSET_METERS = 0.0;
         public static final double BALL_LAUNCH_HEIGHT_METERS = 0.4826;
 
+        // ---- Physics aiming calibration ----
+        // Every value below is exposed live on SmartDashboard under "Tuning/Shooter/..." (see
+        // ShooterTuning). Tune on the dashboard, then copy the winning number back here so it
+        // survives a reboot. Suggested tuning order is 1 → 6.
+
+        // (0) Gravity used by the ballistic solve. maple-sim's projectiles use a flat 11.0 m/s^2
+        // instead of 9.81 to fake air drag, so sim and the real robot want different values here.
+        // ShooterTuning picks the right default automatically; override only if you know why.
+        public static final double PHYSICS_GRAVITY_SIM_MPS2  = 11.0;
+        public static final double PHYSICS_GRAVITY_REAL_MPS2 = 9.80665;
+
+        // (1) How much steeper than the minimum-energy angle to aim. The minimum-energy angle
+        // reaches the target exactly at the apex of its arc, which at close range can arrive on
+        // the way UP and skim the rim. Biasing steeper guarantees the ball is descending on
+        // arrival. Raise if shots ride the rim, lower if they drop short and steep.
+        public static final double DESCENT_MARGIN_DEG = 12.0;
+
+        // (2) Mechanical zero calibration. Pure command offsets applied AFTER the physics solve —
+        // these correct "the rack reads 20 deg but is physically at 22 deg", not the physics.
+        // RACK: positive = flatter shot (rack angle up). TURRET: positive = counter-clockwise.
+        public static final double RACK_ANGLE_OFFSET_DEG   = 0.0;
+        public static final double TURRET_ANGLE_OFFSET_DEG = 0.0;
+
+        // (3) Speed calibration. The no-drag solve always UNDER-predicts the speed a real ball
+        // needs, and the shortfall grows with range, so there are two knobs:
+        //   SPEED_SCALAR      — flat multiplier on required launch speed. Fixes "every shot is
+        //                       short/long by the same fraction". Start here.
+        //   SPEED_PER_METER   — extra m/s added per meter of distance. Fixes "close shots are
+        //                       right but long shots fall short" (that's air drag).
+        public static final double SPEED_SCALAR_DEFAULT    = 1.0;
+        public static final double SPEED_PER_METER_DEFAULT = 0.0;
+
+        // (4) Final flywheel trim in motor RPS, applied after the speed→RPS conversion. Use this
+        // for a small constant bias (e.g. ball compression losses at the exit roller) rather than
+        // distorting FLYWHEEL_EFFECTIVE_DIAMETER_METERS, which also affects the sim projectile.
+        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = 0.0;
+
+        // (5) Shoot-on-the-move authority, 0 to 1. 1.0 = fully compensate for robot velocity,
+        // 0.0 = ignore it entirely (aim as if stopped). Set to 0 to isolate a stationary aiming
+        // problem from a motion-compensation problem, then walk it back up.
+        public static final double SHOOT_ON_THE_MOVE_GAIN = 1.0;
+
         // Field-relative 3D position of the shooting target (AprilTag 26)
         private static final Pose3d TAG_26_POSE = VisionConstants.APRIL_TAG_FIELD_LAYOUT
             .getTagPose(26)
             .orElseThrow();
         public static final double BLUE_TARGET_X_METERS = TAG_26_POSE.getX() + 0.597;
         public static final double BLUE_TARGET_Y_METERS = TAG_26_POSE.getY() + 0;
-        public static final double BLUE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0.610;
+        // Lowered from +0.610 — maple-sim's RebuiltHub scores fuel between z=1.5748m and
+        // z=1.8288m (a 10 in tall zone starting at the hub's own position), so +0.610 (aiming
+        // near the top of that zone) was causing shots to overshoot, worse at longer range.
+        // +0.45 aims near the low edge of the real scoring zone instead.
+        public static final double BLUE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0.45;
 
         // Field-relative 3D position of the red side shooting target (AprilTag 10)
         private static final Pose3d TAG_10_POSE = VisionConstants.APRIL_TAG_FIELD_LAYOUT
@@ -95,7 +141,7 @@ public final class Constants {
             .orElseThrow();
         public static final double RED_TARGET_X_METERS = TAG_10_POSE.getX() - 0.597;
         public static final double RED_TARGET_Y_METERS = TAG_10_POSE.getY() + 0;
-        public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.610;
+        public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.45;
 
 
         public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() - 0.25;
@@ -126,29 +172,104 @@ public final class Constants {
 
     }
 
+    /**
+     * Tuning for the fused field-relative velocity estimate used by shoot-on-the-move.
+     *
+     * <p>The Pigeon 2's accelerometer is the primary source: it responds instantly to a direction
+     * change, where wheel odometry lags and lies during a slip. Its weakness is drift — integrating
+     * acceleration accumulates error over a long straight. So wheel odometry is folded back in as a
+     * slow correction, and the vision-corrected pose as an even slower one, which pins the estimate
+     * down without giving up the IMU's fast response.
+     */
+    public static final class VelocityEstimatorConstants {
+        public static final double GRAVITY_MPS2 = 9.80665;
+
+        // How hard wheel odometry pulls the IMU-integrated velocity back, as a first-order time
+        // constant in seconds. This is THE main knob.
+        //   Larger (0.5+) = trust the IMU more: snappier response to direction changes, more drift.
+        //   Smaller (0.1) = trust the wheels more: less drift, back toward plain wheel odometry.
+        public static final double WHEEL_TRUST_TAU_SECONDS = 0.25;
+
+        // Accelerometer bias learning rate. The residual between the IMU-integrated velocity and
+        // wheel odometry is integrated into a per-axis bias estimate that gets subtracted from raw
+        // acceleration. This is what stops a long straight from slowly drifting.
+        // Set to 0 to disable bias learning entirely (pure complementary filter).
+        public static final double ACCEL_BIAS_GAIN = 0.20;
+
+        // Vision correction: velocity derived by differentiating the vision-fused pose over
+        // VISION_SAMPLE_WINDOW_SECONDS. Slow and noisy, but unbiased — it catches systematic wheel
+        // odometry error (wrong wheel radius, carpet scrub) that the wheels alone cannot see.
+        // Set VISION_TRUST_TAU_SECONDS very high to disable.
+        public static final double VISION_TRUST_TAU_SECONDS     = 1.5;
+        public static final double VISION_SAMPLE_WINDOW_SECONDS = 0.25;
+        // Ignore a vision-derived sample this far off the current estimate — a vision pose jump
+        // differentiates into a huge bogus velocity spike, and this rejects it.
+        public static final double VISION_REJECT_THRESHOLD_MPS = 2.0;
+
+        // Rotation of the Pigeon's accelerometer axes into robot axes, in degrees. Only needed if
+        // the Pigeon is not mounted with its X axis pointing robot-forward. The proper fix is the
+        // Pigeon 2 MountPose config in Tuner X; this is the quick field workaround.
+        public static final double IMU_MOUNT_YAW_OFFSET_DEG = 0.0;
+
+        // ---- Pigeon mounting position, relative to robot center (meters, robot frame) ----
+        // X: positive toward the robot FRONT.  Y: positive toward the robot LEFT.
+        //
+        // This mattered not at all when the Pigeon was only a gyro: yaw rate is identical
+        // everywhere on a rigid body. It matters a great deal now that its ACCELEROMETER is being
+        // used, because an off-center point on a rotating robot is genuinely accelerating even when
+        // the robot's center is not. Spinning in place at 8 rad/s with the Pigeon 0.2 m off center
+        // makes it read ~13 m/s^2 of pure centripetal acceleration that the robot center never
+        // experiences — integrate that and the velocity estimate is garbage the moment the robot
+        // turns. The estimator subtracts both the centripetal (omega^2 * r) and tangential
+        // (alpha * r) terms to recover the center's acceleration.
+        //
+        // Measure from CAD or by tape measure to the Pigeon chip itself. Leave both 0 only if the
+        // Pigeon really is at the robot's rotational center.
+        // TODO: measure on the real robot.
+        public static final double PIGEON_OFFSET_FORWARD_METERS = 0.0;
+        public static final double PIGEON_OFFSET_LEFT_METERS    = 0.0;
+
+        // Smoothing time constant for the yaw acceleration (alpha) used by the tangential term.
+        // Alpha comes from differentiating yaw rate, which is noisy, so it gets low-passed. Larger =
+        // smoother but laggier. Only has any effect when the Pigeon offsets above are non-zero.
+        public static final double YAW_ACCEL_FILTER_TAU_SECONDS = 0.04;
+
+        // Hard sanity clamp on the fused estimate so a bad accelerometer can never run away.
+        public static final double MAX_PLAUSIBLE_SPEED_MPS = 6.0;
+    }
+
     public static final class TurretConstants {
         public static final int TURRET_INDEXER_ID = 28;
 
         public static final double TURRET_INDEXER_SPEED = -.65; // 60% before
 
-        // Indexer spin compensation constants.
-        // The turret indexer imparts spin on the ball that causes trajectory error
-        // depending on the turret's angle relative to the robot.
+        // ---- Feeder / indexer disturbance compensation ----
+        // The feeder shoves the ball as it enters the turret, so the ball leaves carrying a little
+        // velocity the shooter never asked for. Both terms below act along the robot's FORE/AFT
+        // axis, and which one dominates depends on where the turret is pointing:
         //
-        // INDEXER_SPIN_FORWARD_BACK_MAX_MS: maximum extra effective velocity (m/s)
-        //   along the barrel axis (forward = ball goes long, backward = ball goes short).
-        //   Scales as cos(turretAngle): full effect at 0°/180°, zero at 90°/270°.
+        // FEEDER_FORWARD_PUSH_MPS: with the turret pointing straight ahead (or straight back), the
+        //   feeder's shove runs down the barrel and the ball leaves faster than commanded. Scales
+        //   as cos^2(turretAngle), so it is at full strength at 0/180 deg and gone at +/-90.
+        //   Symptom when wrong: shots go long/short, by an amount that changes as the robot rotates
+        //   relative to the target.
         //
-        // INDEXER_SPIN_LEFT_RIGHT_MAX_MS: maximum extra effective velocity (m/s)
-        //   perpendicular to the barrel axis from the turret's perspective
-        //   (positive = ball drifts left of target, negative = right of target).
-        //   Scales as sin(turretAngle): full effect at 90°/270°, zero at 0°/180°.
+        // FEEDER_BACKWARD_PUSH_AT_90_MPS: as the turret swings toward 90 deg to EITHER side, that
+        //   help disappears and the ball instead comes out with extra velocity toward the ROBOT
+        //   REAR. Scales as sin^2(turretAngle) — sin SQUARED, so the push is the same at +90 and
+        //   -90, which is how the real effect behaves.
+        //   Symptom when wrong: shots are fine with the turret forward but consistently off when
+        //   shooting out the side, in a way that is mirrored left and right.
         //
-        // Both values are multiplied by flight time inside the virtual target loop
-        // to offset the aim point and correct for spin-induced trajectory error.
+        // Corrected by plain vector subtraction, the same mechanism as shoot-on-the-move.
+        //
+        // Both are live-tunable on SmartDashboard under "Tuning/Shooter/". The two terms are
+        // independent, so tune each at the turret angle where the other contributes nothing: park
+        // the turret at 0 deg for the forward term, then at 90 deg for the rearward term. Robot
+        // STATIONARY for both.
         // TODO: tune empirically from test shots.
-        public static final double INDEXER_SPIN_FORWARD_BACK_MAX_MS = 0.45;
-        public static final double INDEXER_SPIN_LEFT_RIGHT_MAX_MS   = 0.15;
+        public static final double FEEDER_FORWARD_PUSH_MPS        = 0.45;
+        public static final double FEEDER_BACKWARD_PUSH_AT_90_MPS = 0.15;
     }
 
     public static final class GroundIntakeConstants {
@@ -272,6 +393,14 @@ public final class Constants {
         // Standard deviations — higher = less trust. Format: [x, y, theta]
         public static final Matrix<N3, N1> SINGLE_TAG_STD_DEVS = VecBuilder.fill(4.0, 4.0, 8.0);
         public static final Matrix<N3, N1> MULTI_TAG_STD_DEVS  = VecBuilder.fill(0.5, 0.5, 1.0);
+
+        // These std devs above are conservatively tuned for real-world camera noise. maple-sim's
+        // simulated cameras don't have anywhere near that much noise, so trusting them exactly
+        // as little as real cameras makes odometry drift (e.g. from a wall collision) recover
+        // unrealistically slowly in sim. Scales the final std dev down (only in simulation) to
+        // let simulated vision correct drift faster — tune this if recovery still feels too slow
+        // or corrections start looking too twitchy/aggressive.
+        public static final double SIM_STD_DEV_SCALE_FACTOR = 0.1;
 
         public static final double MAX_TAG_DISTANCE_METERS = 6.0;
         public static final double MAX_POSE_AMBIGUITY      = 0.2;

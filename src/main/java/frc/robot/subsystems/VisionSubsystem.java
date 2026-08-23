@@ -7,6 +7,9 @@ import java.util.Optional;
 import org.photonvision.EstimatedRobotPose;
 import org.photonvision.PhotonCamera;
 import org.photonvision.PhotonPoseEstimator;
+import org.photonvision.simulation.PhotonCameraSim;
+import org.photonvision.simulation.SimCameraProperties;
+import org.photonvision.simulation.VisionSystemSim;
 import org.photonvision.targeting.PhotonPipelineResult;
 import org.photonvision.targeting.PhotonTrackedTarget;
 
@@ -17,6 +20,7 @@ import edu.wpi.first.math.geometry.Pose3d;
 import edu.wpi.first.math.geometry.Transform3d;
 import edu.wpi.first.math.numbers.N1;
 import edu.wpi.first.math.numbers.N3;
+import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 
 import frc.robot.constants.Constants.VisionConstants;
@@ -59,6 +63,11 @@ public class VisionSubsystem extends SubsystemBase {
 
     // Reference to intake subsystem for conditional camera processing
     private GroundIntakeSubsystem m_intakeSubsystem;
+
+    // Simulated cameras — null on a real robot. Feeding this the ground-truth simulated pose
+    // each loop (see updateSimulatedVision) makes each PhotonCamera above report realistic,
+    // noisy AprilTag detections in simulateJava instead of nothing at all.
+    private final VisionSystemSim m_visionSim;
 
     /**
      * Helper class to bundle a camera with its estimator and transform.
@@ -144,6 +153,38 @@ public class VisionSubsystem extends SubsystemBase {
             VisionConstants.ROBOT_TO_FRONT_LEFT_CAMERA,
             VisionConstants.FRONT_LEFT_CAMERA_NAME
         ));
+
+        // Set up simulated vision so cameras produce realistic AprilTag detections in
+        // simulateJava. PI4_LIFECAM_640_480 is a built-in PhotonVision preset with real
+        // calibration/noise/latency data — swap for your actual camera's specs once known.
+        if (RobotBase.isSimulation()) {
+            m_visionSim = new VisionSystemSim("main");
+            m_visionSim.addAprilTags(VisionConstants.APRIL_TAG_FIELD_LAYOUT);
+            for (CameraConfig config : cameras) {
+                PhotonCameraSim cameraSim = new PhotonCameraSim(
+                    config.camera, SimCameraProperties.PI4_LIFECAM_640_480());
+                cameraSim.setMaxSightRange(VisionConstants.MAX_TAG_DISTANCE_METERS);
+                m_visionSim.addCamera(cameraSim, config.robotToCamera);
+            }
+        } else {
+            m_visionSim = null;
+        }
+    }
+
+    /**
+     * Feeds the current ground-truth pose into the simulated cameras so they produce
+     * realistic AprilTag detections. No-op on a real robot.
+     *
+     * <p>Pass the true simulated pose (e.g. {@code CommandSwerveDrivetrain.getSimulatedGroundTruthPose()}),
+     * not the odometry estimate — otherwise simulated vision would just reinforce whatever
+     * error is already in the odometry rather than correcting it.
+     *
+     * @param groundTruthPose the robot's true simulated pose
+     */
+    public void updateSimulatedVision(Pose2d groundTruthPose) {
+        if (m_visionSim != null) {
+            m_visionSim.update(groundTruthPose);
+        }
     }
 
     /**
@@ -320,6 +361,11 @@ public class VisionSubsystem extends SubsystemBase {
         // Scale standard deviations based on distance
         // Further tags = less confidence = higher standard deviations
         double scale = 1.0 + (avgDistance * avgDistance / 30.0);
+        if (RobotBase.isSimulation()) {
+            // Simulated cameras are far less noisy than real ones — trust them more so odometry
+            // drift actually recovers at a reasonable rate during sim testing.
+            scale *= VisionConstants.SIM_STD_DEV_SCALE_FACTOR;
+        }
 
         return VecBuilder.fill(
             base.get(0, 0) * scale,

@@ -12,10 +12,17 @@ import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.signals.GravityTypeValue;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
 
+import edu.wpi.first.units.Units;
+import edu.wpi.first.wpilibj.RobotBase;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import frc.robot.constants.Constants;
+
+import org.ironmaple.simulation.IntakeSimulation;
+import org.ironmaple.simulation.IntakeSimulation.IntakeSide;
+import org.ironmaple.simulation.SimulatedArena;
 
 public class GroundIntakeSubsystem implements Subsystem {
 
@@ -24,6 +31,28 @@ public class GroundIntakeSubsystem implements Subsystem {
     private final TalonFX m_rollerMotor;
     private final TalonFX m_rightIndexerMotor;
     private final TalonFX m_leftIndexerMotor;
+
+    // ---- Simulation ----
+    // The pivot skips physics simulation and just snaps its simulated position straight to
+    // whatever was last commanded (see simulationPeriodic()) — same approach as the shooter's
+    // turret/rack, and for the same reason: a physics model here needs real tuning (moment of
+    // inertia, gains) that isn't available, and the point of this sim is testing mode-switching
+    // logic (e.g. DefenseMode raising the intake), not sim-only PID convergence.
+
+    // ---- Simulation-only fuel pickup ----
+    // "Touch it, get it" collision model from maple-sim — collects a "Fuel" piece on contact
+    // while the intake is deployed. Capacity of 8 lets the intake buffer up to 8 pieces (e.g.
+    // driving through a dense cluster faster than they can be fired) rather than a single-shot
+    // feed. Placement/size (front, 20in wide, 8in extension) is a rough guess — adjust to match
+    // the real intake's mounting side and footprint.
+    private static final int INTAKE_CAPACITY = 8;
+    private final IntakeSimulation m_intakeSim;
+
+    // Caps how fast the robot can actually intake fuel — gates tryConsumeFuel(), which (once the
+    // buffer above is full) also gates new pickups, so driving through a dense pile faster than
+    // this rate just leaves the extra pieces on the field instead of collecting them.
+    private static final double MAX_INTAKE_RATE_PER_SEC = 8.0;
+    private double m_lastFuelConsumedTimestamp = -1.0 / MAX_INTAKE_RATE_PER_SEC;
 
     // Reusable control requests
     private final MotionMagicVoltage m_pivotRequest = new MotionMagicVoltage(0).withSlot(0);
@@ -77,7 +106,7 @@ public class GroundIntakeSubsystem implements Subsystem {
         .withStatorCurrentLimitEnable(true)
         .withStatorCurrentLimit(50);
 
-    public GroundIntakeSubsystem() {
+    public GroundIntakeSubsystem(CommandSwerveDrivetrain drivetrain) {
         m_leftPivotMotor  = new TalonFX(Constants.GroundIntakeConstants.LEFT_PIVOT_ID);
         m_rightPivotMotor = new TalonFX(Constants.GroundIntakeConstants.RIGHT_PIVOT_ID);
         m_rollerMotor      = new TalonFX(Constants.GroundIntakeConstants.ROLLER_ID);
@@ -117,6 +146,61 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_leftPivotMotor.setPosition(
             Constants.GroundIntakeConstants.PIVOT_UP_ROTATIONS
             * Constants.GroundIntakeConstants.PIVOT_GEAR_RATIO);
+
+        if (RobotBase.isSimulation()) {
+            m_intakeSim = IntakeSimulation.OverTheBumperIntake(
+                "Fuel",
+                drivetrain.getMapleSimDrive(),
+                Units.Inches.of(20),
+                Units.Inches.of(8),
+                IntakeSide.FRONT,
+                INTAKE_CAPACITY
+            );
+        } else {
+            m_intakeSim = null;
+        }
+    }
+
+    /**
+     * Returns true if the intake is currently holding a fuel piece. Always false on a real robot.
+     *
+     * <p>Synchronized on the arena instance because maple-sim increments the intake's piece
+     * count from its own physics thread (inside SimulatedArena's synchronized
+     * simulationPeriodic(), driven by the drivetrain's Notifier) — reading/writing it from the
+     * main robot thread without this lock is a real race that eventually leaves the count stuck
+     * at capacity, after which the intake can never register a new pickup again.
+     */
+    public boolean hasFuel() {
+        if (m_intakeSim == null) {
+            return false;
+        }
+        synchronized (SimulatedArena.getInstance()) {
+            return m_intakeSim.getGamePiecesAmount() > 0;
+        }
+    }
+
+    /**
+     * Removes one held fuel piece, if any. Used to hand a piece off to the shooter on pickup.
+     * Throttled to {@link #MAX_INTAKE_RATE_PER_SEC} — see the field comment above for why.
+     * See {@link #hasFuel()} for why this is synchronized.
+     *
+     * @return true if a piece was present, removed, and the rate limit allowed it
+     */
+    public boolean tryConsumeFuel() {
+        if (m_intakeSim == null) {
+            return false;
+        }
+        double now = Timer.getFPGATimestamp();
+        if (now - m_lastFuelConsumedTimestamp < 1.0 / MAX_INTAKE_RATE_PER_SEC) {
+            return false;
+        }
+        synchronized (SimulatedArena.getInstance()) {
+            boolean consumed = m_intakeSim.obtainGamePieceFromIntake();
+            if (consumed) {
+                m_lastFuelConsumedTimestamp = now;
+            }
+            return consumed;
+        }
     }
 
     /**
@@ -145,6 +229,11 @@ public class GroundIntakeSubsystem implements Subsystem {
     /** Returns the current pivot position in mechanism rotations. */
     public double getPivotPosition() {
         return m_leftPivotMotor.getPosition().getValueAsDouble();
+    }
+
+    /** Returns the current pivot angle in degrees (0 = horizontal, positive = above horizontal). */
+    public double getPivotAngleDeg() {
+        return getPivotPosition() * 360.0;
     }
 
     /** Returns true when the pivot is within tolerance of the target position. */
@@ -192,6 +281,17 @@ public class GroundIntakeSubsystem implements Subsystem {
         SmartDashboard.putNumber("Intake/PivotPosition", getPivotPosition());
         SmartDashboard.putNumber("Intake/PivotTarget", m_pivotTargetPosition);
         SmartDashboard.putBoolean("Intake/IsDown", isInIntakePosition());
+
+        if (m_intakeSim != null) {
+            // See hasFuel() for why this needs to be synchronized with the physics thread.
+            synchronized (SimulatedArena.getInstance()) {
+                if (isInIntakePosition()) {
+                    m_intakeSim.startIntake();
+                } else {
+                    m_intakeSim.stopIntake();
+                }
+            }
+        }
     }
 
     public Command disabledCommand() {
@@ -206,5 +306,17 @@ public class GroundIntakeSubsystem implements Subsystem {
             pivotUp();
             setRollerSpeed(0.0);
         });
+    }
+
+    /**
+     * Snaps the simulated pivot straight to its last commanded position instead of running a
+     * physics model through it — see the note on the simulation fields above for why. This motor
+     * has SensorToMechanismRatio configured, so getPosition() already returns mechanism
+     * rotations — meaning the raw rotor value is the mechanism angle multiplied by the gear ratio.
+     */
+    @Override
+    public void simulationPeriodic() {
+        m_leftPivotMotor.getSimState().setRawRotorPosition(
+            m_pivotTargetPosition * Constants.GroundIntakeConstants.PIVOT_GEAR_RATIO);
     }
 }
