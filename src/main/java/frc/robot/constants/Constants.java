@@ -25,8 +25,8 @@ public final class Constants {
         public static final double NORMAL_MAX_ANGULAR_RATE_MULTIPLIER = 1.0;
 
         // Shooter mode speeds (reduced for precise positioning)
-        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 0.75; // 50% of max speed
-        public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 1; // 50% of max rotation speed
+        public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 0.25; // 25% of max speed
+        public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 0.5; // 50% of max rotation speed
     }
 
     public static final class ShooterConstants{
@@ -35,12 +35,12 @@ public final class Constants {
         public static final int SHOOTER_FLYWHEEL_ID = 27;
 
 
-        public static final double ROTATOR_KP = 12; // optimal is 12, but too violent, need stronger wiring chain.
+        public static final double ROTATOR_KP = 18; // optimal is 12, but too violent, need stronger wiring chain.
         public static final double ROTATOR_KI = 0.0;
-        public static final double ROTATOR_KD = 0.35;
+        public static final double ROTATOR_KD = 0.4;
         // Velocity feedforward for turret omega tracking (V·s/rot, motor units).
         // Start at 0 (disabled), increment by ~0.05 until turret tracks robot rotation smoothly.
-        public static final double ROTATOR_KV = 0.125;
+        public static final double ROTATOR_KV = 0.6;
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
@@ -111,12 +111,12 @@ public final class Constants {
         //   SPEED_PER_METER   — extra m/s added per meter of distance. Fixes "close shots are
         //                       right but long shots fall short" (that's air drag).
         public static final double SPEED_SCALAR_DEFAULT    = 1.0;
-        public static final double SPEED_PER_METER_DEFAULT = 0.0;
+        public static final double SPEED_PER_METER_DEFAULT = 0.35;
 
         // (4) Final flywheel trim in motor RPS, applied after the speed→RPS conversion. Use this
         // for a small constant bias (e.g. ball compression losses at the exit roller) rather than
         // distorting FLYWHEEL_EFFECTIVE_DIAMETER_METERS, which also affects the sim projectile.
-        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = 0.0;
+        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = 2;
 
         // (5) Shoot-on-the-move authority, 0 to 1. 1.0 = fully compensate for robot velocity,
         // 0.0 = ignore it entirely (aim as if stopped). Set to 0 to isolate a stationary aiming
@@ -188,7 +188,7 @@ public final class Constants {
         // constant in seconds. This is THE main knob.
         //   Larger (0.5+) = trust the IMU more: snappier response to direction changes, more drift.
         //   Smaller (0.1) = trust the wheels more: less drift, back toward plain wheel odometry.
-        public static final double WHEEL_TRUST_TAU_SECONDS = 0.25;
+        public static final double WHEEL_TRUST_TAU_SECONDS = 0.15;
 
         // Accelerometer bias learning rate. The residual between the IMU-integrated velocity and
         // wheel odometry is integrated into a per-axis bias estimate that gets subtracted from raw
@@ -200,7 +200,7 @@ public final class Constants {
         // VISION_SAMPLE_WINDOW_SECONDS. Slow and noisy, but unbiased — it catches systematic wheel
         // odometry error (wrong wheel radius, carpet scrub) that the wheels alone cannot see.
         // Set VISION_TRUST_TAU_SECONDS very high to disable.
-        public static final double VISION_TRUST_TAU_SECONDS     = 1.5;
+        public static final double VISION_TRUST_TAU_SECONDS     = 0.75;
         public static final double VISION_SAMPLE_WINDOW_SECONDS = 0.25;
         // Ignore a vision-derived sample this far off the current estimate — a vision pose jump
         // differentiates into a huge bogus velocity spike, and this rejects it.
@@ -226,8 +226,8 @@ public final class Constants {
         // Measure from CAD or by tape measure to the Pigeon chip itself. Leave both 0 only if the
         // Pigeon really is at the robot's rotational center.
         // TODO: measure on the real robot.
-        public static final double PIGEON_OFFSET_FORWARD_METERS = 0.0;
-        public static final double PIGEON_OFFSET_LEFT_METERS    = 0.0;
+        public static final double PIGEON_OFFSET_FORWARD_METERS = -0.0127;
+        public static final double PIGEON_OFFSET_LEFT_METERS    = -0.2921;
 
         // Smoothing time constant for the yaw acceleration (alpha) used by the tangential term.
         // Alpha comes from differentiating yaw rate, which is noisy, so it gets low-passed. Larger =
