@@ -338,6 +338,34 @@ public final class Constants {
         public static final double LEFT_INDEXER_SPEED = -RIGHT_INDEXER_SPEED; // 60% duty cycle
         public static final double ROLLER_JAM_SPEED = -0.2; // 20% duty cycle
 
+        // ---- Automatic jam recovery ----
+        // While intaking, a stalled roller motor (high stator current + not turning) means a ball
+        // is wedged. The intake path reverses at full speed for UNJAM_DURATION_SECONDS to spit it
+        // back out, then resumes intaking. The flywheel is never touched, so it stays at speed.
+        //
+        // Stall current: the roller's stator limit is 70 A, so a genuinely stalled roller pins at
+        // 70 A. Anything below the limit but well above normal intaking draw works here.
+        public static final double ROLLER_STALL_CURRENT_AMPS = 55.0;
+
+        // Stall velocity, in MOTOR ROTOR rotations/second (the roller has no
+        // SensorToMechanismRatio configured, so this is the motor's own speed). Free speed at
+        // ROLLER_INTAKE_SPEED is roughly 75 rps, so this is "basically not turning".
+        public static final double ROLLER_STALL_VELOCITY_RPS = 10.0;
+
+        // How long both conditions must hold before it counts as a jam. Mainly there so the
+        // current spike during roller spin-up (high current, still slow) doesn't read as a stall.
+        // Lower it for faster recovery, raise it if spin-up false-triggers an unjam.
+        public static final double ROLLER_STALL_DEBOUNCE_SECONDS = 0.25;
+
+        // How long to run in reverse before going back to intaking.
+        public static final double UNJAM_DURATION_SECONDS = 0.5;
+
+        // Full-speed reverse burst used by the automatic recovery — the mirror of the intake
+        // speeds above, at 100% instead of ROLLER_JAM_SPEED's gentler manual 20%.
+        public static final double ROLLER_UNJAM_SPEED        = -1.0;
+        public static final double RIGHT_INDEXER_UNJAM_SPEED = -1.0;
+        public static final double LEFT_INDEXER_UNJAM_SPEED  =  1.0;
+
         // ---- Position tolerance ----
         // How close (in mechanism rotations) counts as "at position".
         public static final double PIVOT_TOLERANCE_ROTATIONS = 0.02; // ~7°

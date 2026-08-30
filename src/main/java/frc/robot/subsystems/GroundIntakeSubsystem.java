@@ -1,5 +1,7 @@
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.FeedbackConfigs;
 import com.ctre.phoenix6.configs.MotionMagicConfigs;
@@ -13,6 +15,8 @@ import com.ctre.phoenix6.signals.GravityTypeValue;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
 
 import edu.wpi.first.units.Units;
+import edu.wpi.first.units.measure.AngularVelocity;
+import edu.wpi.first.units.measure.Current;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
@@ -53,6 +57,22 @@ public class GroundIntakeSubsystem implements Subsystem {
     // this rate just leaves the extra pieces on the field instead of collecting them.
     private static final double MAX_INTAKE_RATE_PER_SEC = 8.0;
     private double m_lastFuelConsumedTimestamp = -1.0 / MAX_INTAKE_RATE_PER_SEC;
+
+    // ---- Automatic jam recovery ----
+    // Roller signals used to spot a jam: a wedged ball stalls the roller, which reads as high
+    // stator current while the motor is barely turning. Both are needed — high current alone is
+    // just a hard-working intake, and low speed alone is just a stopped one.
+    private final StatusSignal<Current> m_rollerStatorCurrent;
+    private final StatusSignal<AngularVelocity> m_rollerVelocity;
+
+    // Debounced stall state, recomputed once per loop in periodic() rather than on demand, so the
+    // timing below is unaffected by how often callers ask. -1 means "not currently stalling".
+    private double m_rollerStallStartTime = -1.0;
+    private boolean m_rollerStalled = false;
+
+    // Set while running the reverse burst; see runIntakeWithAutoUnjam().
+    private boolean m_unjamming = false;
+    private final Timer m_unjamTimer = new Timer();
 
     // Reusable control requests
     private final MotionMagicVoltage m_pivotRequest = new MotionMagicVoltage(0).withSlot(0);
@@ -130,6 +150,11 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rightPivotMotor.optimizeBusUtilization(); // follower — no readbacks needed
 
         m_rollerMotor.getConfigurator().apply(kRollerCurrentLimits);
+        // Jam detection reads these two, so they have to be registered before
+        // optimizeBusUtilization() silences everything that wasn't asked for.
+        m_rollerStatorCurrent = m_rollerMotor.getStatorCurrent();
+        m_rollerVelocity = m_rollerMotor.getVelocity();
+        BaseStatusSignal.setUpdateFrequencyForAll(50, m_rollerStatorCurrent, m_rollerVelocity);
         m_rollerMotor.optimizeBusUtilization();
 
         m_leftIndexerMotor.getConfigurator().apply(kIndexerCurrentLimits);
@@ -260,6 +285,67 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rightPivotMotor.set(-Constants.GroundIntakeConstants.PIVOT_FORCE_DOWN_POWER);
     }
 
+    /**
+     * True when the roller motor has been stalled — high stator current while barely turning —
+     * for longer than {@code ROLLER_STALL_DEBOUNCE_SECONDS}. Always false in simulation, where
+     * the roller's sim state isn't driven and both signals read zero.
+     */
+    public boolean isRollerStalled() {
+        return m_rollerStalled;
+    }
+
+    /**
+     * Runs the roller and both indexers inward, automatically reversing the whole path at full
+     * speed for {@code UNJAM_DURATION_SECONDS} whenever {@link #isRollerStalled()} trips, then
+     * resuming intake on its own. Call once per loop from a command's execute().
+     *
+     * <p>Only the intake's own motors are touched — the shooter flywheel keeps running whatever
+     * the calling command commanded, so it stays at speed through the unjam.
+     *
+     * @return true while the reverse burst is running, so the caller can reverse the turret
+     *     indexer to match and clear the throat above the intake as well.
+     */
+    public boolean runIntakeWithAutoUnjam() {
+        if (m_unjamming) {
+            if (m_unjamTimer.hasElapsed(Constants.GroundIntakeConstants.UNJAM_DURATION_SECONDS)) {
+                m_unjamming = false;
+                // Make the detector earn a fresh full debounce window before it can fire again,
+                // instead of re-triggering off the stall it was already tracking. If the ball is
+                // still wedged this just means another burst a fraction of a second later.
+                m_rollerStallStartTime = -1.0;
+                m_rollerStalled = false;
+            }
+        } else if (m_rollerStalled) {
+            m_unjamming = true;
+            m_unjamTimer.restart();
+        }
+
+        if (m_unjamming) {
+            setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_UNJAM_SPEED);
+            setLeftIndexerMotorSpeed(Constants.GroundIntakeConstants.LEFT_INDEXER_UNJAM_SPEED);
+            setRightIndexerMotorSpeed(Constants.GroundIntakeConstants.RIGHT_INDEXER_UNJAM_SPEED);
+        } else {
+            setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
+            setLeftIndexerMotorSpeed(Constants.GroundIntakeConstants.LEFT_INDEXER_SPEED);
+            setRightIndexerMotorSpeed(Constants.GroundIntakeConstants.RIGHT_INDEXER_SPEED);
+        }
+
+        return m_unjamming;
+    }
+
+    /**
+     * Clears any in-progress unjam and the stall detector's history. Call from the initialize()
+     * of any command that intakes, so a jam detected under the previous command doesn't carry
+     * over into the new one.
+     */
+    public void resetAutoUnjam() {
+        m_unjamming = false;
+        m_unjamTimer.stop();
+        m_unjamTimer.reset();
+        m_rollerStallStartTime = -1.0;
+        m_rollerStalled = false;
+    }
+
     public void setLeftIndexerMotorSpeed(double speed) {
         m_leftIndexerMotor.set(speed);
     }
@@ -278,6 +364,8 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     @Override
     public void periodic() {
+        updateStallDetection();
+
         SmartDashboard.putNumber("Intake/PivotPosition", getPivotPosition());
         SmartDashboard.putNumber("Intake/PivotTarget", m_pivotTargetPosition);
         SmartDashboard.putBoolean("Intake/IsDown", isInIntakePosition());
@@ -292,6 +380,37 @@ public class GroundIntakeSubsystem implements Subsystem {
                 }
             }
         }
+    }
+
+    /**
+     * Refreshes the roller signals and updates the debounced stall flag. Runs every loop from
+     * periodic(), and always before commands execute (the scheduler runs subsystem periodics
+     * first), so {@link #runIntakeWithAutoUnjam()} acts on a same-loop reading.
+     */
+    private void updateStallDetection() {
+        BaseStatusSignal.refreshAll(m_rollerStatorCurrent, m_rollerVelocity);
+        double amps = m_rollerStatorCurrent.getValueAsDouble();
+        double rps = m_rollerVelocity.getValueAsDouble();
+
+        boolean stallingNow =
+            amps >= Constants.GroundIntakeConstants.ROLLER_STALL_CURRENT_AMPS
+            && Math.abs(rps) <= Constants.GroundIntakeConstants.ROLLER_STALL_VELOCITY_RPS;
+
+        double now = Timer.getFPGATimestamp();
+        if (!stallingNow) {
+            m_rollerStallStartTime = -1.0;
+        } else if (m_rollerStallStartTime < 0.0) {
+            m_rollerStallStartTime = now;
+        }
+
+        m_rollerStalled = m_rollerStallStartTime >= 0.0
+            && now - m_rollerStallStartTime
+               >= Constants.GroundIntakeConstants.ROLLER_STALL_DEBOUNCE_SECONDS;
+
+        SmartDashboard.putNumber("Intake/RollerCurrent", amps);
+        SmartDashboard.putNumber("Intake/RollerVelocity", rps);
+        SmartDashboard.putBoolean("Intake/RollerStalled", m_rollerStalled);
+        SmartDashboard.putBoolean("Intake/Unjamming", m_unjamming);
     }
 
     public Command disabledCommand() {

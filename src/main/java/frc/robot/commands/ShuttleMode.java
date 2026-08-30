@@ -31,6 +31,7 @@ public class ShuttleMode extends Command {
     public void initialize() {
 
         
+        m_GroundIntake.resetAutoUnjam();
         m_GroundIntake.setPivotPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
         m_timer.restart();
         m_timer.start();
@@ -38,10 +39,11 @@ public class ShuttleMode extends Command {
 
     @Override
     public void execute() {
-        m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
-        m_GroundIntake.setLeftIndexerMotorSpeed(Constants.GroundIntakeConstants.LEFT_INDEXER_SPEED);
-        m_GroundIntake.setRightIndexerMotorSpeed(Constants.GroundIntakeConstants.RIGHT_INDEXER_SPEED);
-        m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
+        // Same automatic jam recovery as ShooterMode — see runIntakeWithAutoUnjam().
+        boolean unjamming = m_GroundIntake.runIntakeWithAutoUnjam();
+        m_Turret.setTurretIndexerSpeed(unjamming
+            ? -Constants.TurretConstants.TURRET_INDEXER_SPEED
+            : Constants.TurretConstants.TURRET_INDEXER_SPEED);
 
         // Select target based on alliance color (defaults to blue if unknown)
         double tagY;

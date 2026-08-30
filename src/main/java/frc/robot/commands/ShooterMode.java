@@ -26,6 +26,7 @@ public class ShooterMode extends Command {
     @Override
     public void initialize() {
         m_timer.restart();
+        m_GroundIntake.resetAutoUnjam();
         m_GroundIntake.setPivotPosition(Constants.GroundIntakeConstants.SHOOTER_POSITION);
     }
 
@@ -42,10 +43,13 @@ public class ShooterMode extends Command {
         m_Shooter.calculatePhysicsShooterActions(targetPosition);
 
         if (m_timer.hasElapsed(0.25)) {
-            m_GroundIntake.setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
-            m_Turret.setTurretIndexerSpeed(Constants.TurretConstants.TURRET_INDEXER_SPEED);
-            m_GroundIntake.setLeftIndexerMotorSpeed(Constants.GroundIntakeConstants.LEFT_INDEXER_SPEED);
-            m_GroundIntake.setRightIndexerMotorSpeed(Constants.GroundIntakeConstants.RIGHT_INDEXER_SPEED);
+            // Reverses the intake path by itself for half a second whenever the roller stalls,
+            // then goes back to intaking. The flywheel is commanded above either way, so it holds
+            // its speed straight through the unjam.
+            boolean unjamming = m_GroundIntake.runIntakeWithAutoUnjam();
+            m_Turret.setTurretIndexerSpeed(unjamming
+                ? -Constants.TurretConstants.TURRET_INDEXER_SPEED
+                : Constants.TurretConstants.TURRET_INDEXER_SPEED);
         }
     }
 
