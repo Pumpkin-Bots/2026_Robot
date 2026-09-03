@@ -27,6 +27,80 @@ public final class Constants {
         // Shooter mode speeds (reduced for precise positioning)
         public static final double SHOOTER_MODE_MAX_SPEED_MULTIPLIER = 0.25; // 25% of max speed
         public static final double SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER = 0.5; // 50% of max rotation speed
+
+        // Boost mode speeds — full authority, for sprinting between fuel piles while the shooter
+        // is parked. Separate from NORMAL_* so the two can be tuned apart later.
+        public static final double BOOST_MAX_SPEED_MULTIPLIER = 1.0;
+        public static final double BOOST_MAX_ANGULAR_RATE_MULTIPLIER = 1.0;
+
+        // How far an analog trigger must be pressed before its mode engages.
+        public static final double MODE_TRIGGER_THRESHOLD = 0.2;
+    }
+
+    /**
+     * Field geometry for the 2026 REBUILT field, used to decide what the shooter should be doing
+     * from where it is standing. All coordinates are WPILib blue-origin field coordinates: X runs
+     * from the blue alliance wall (0) to the red alliance wall, Y runs from the scoring-table side
+     * (0) to the far side.
+     *
+     * <p>Sources for the numbers below: field length/width and the hub/trench/tower stations come
+     * from the 2026 AprilTag layout ({@code 2026-rebuilt-welded.json}); structure sizes come from
+     * the game manual's arena chapter. Everything here is a plain constant precisely so it can be
+     * re-measured and corrected on the field without touching command logic.
+     */
+    public static final class FieldConstants {
+        public static final double FIELD_LENGTH_METERS = 16.541;
+        public static final double FIELD_WIDTH_METERS  = 8.069;
+
+        // ---- Alliance zones ----
+        // Each ALLIANCE ZONE runs 158.6 in from its own alliance wall toward midfield; the NEUTRAL
+        // ZONE is everything between them. 4.028 m lands exactly on the near face of the hub /
+        // trench line, which is the boundary you can actually see on the carpet.
+        public static final double ALLIANCE_ZONE_DEPTH_METERS = 4.028; // 158.6 in
+
+        /** Largest X still inside the BLUE alliance zone. */
+        public static final double BLUE_ALLIANCE_ZONE_MAX_X_METERS = ALLIANCE_ZONE_DEPTH_METERS;
+        /** Smallest X still inside the RED alliance zone. */
+        public static final double RED_ALLIANCE_ZONE_MIN_X_METERS =
+            FIELD_LENGTH_METERS - ALLIANCE_ZONE_DEPTH_METERS;
+
+        // ---- Trenches ----
+        // A TRENCH sits against each long guardrail at the same field-length station as that
+        // alliance's hub — four of them in total (two per alliance, one per side of the field).
+        // The X centres below are the hub centres, taken from the AprilTag layout: the trench
+        // AprilTags (17/22/23/28 blue, 1/6/7/12 red) sit on the same station line.
+        public static final double BLUE_TRENCH_CENTER_X_METERS =  4.6255;
+        public static final double RED_TRENCH_CENTER_X_METERS  = 11.9155;
+
+        // Front-to-back depth of the trench structure along X (47 in per the manual).
+        public static final double TRENCH_DEPTH_METERS = 1.194;
+
+        // How far the drivable channel under the trench arm reaches in from the guardrail. The
+        // manual gives 50.34 in of clearance under the arm; beyond that the structure is solid.
+        public static final double TRENCH_CHANNEL_DEPTH_METERS = 1.279;
+
+        // Padding added around the trench box before it counts as "in the trench". Grow this if
+        // the shooter is still spinning up as the robot noses into the trench.
+        public static final double TRENCH_MARGIN_METERS = 0.30;
+
+        // ---- Towers ----
+        // A TOWER is built into each alliance wall between driver stations 2 and 3, 49.25 in wide
+        // and 45 in deep. The Y centres are the midpoints of that wall's tower AprilTag pairs
+        // (31/32 blue, 15/16 red), which is why they are not exactly on the field centreline.
+        public static final double TOWER_DEPTH_METERS = 1.143; // 45 in, measured off the wall
+        public static final double TOWER_WIDTH_METERS = 1.251; // 49.25 in, along Y
+        public static final double BLUE_TOWER_CENTER_Y_METERS = 3.962;
+        public static final double RED_TOWER_CENTER_Y_METERS  = 4.107;
+
+        // Padding around the tower box, same idea as TRENCH_MARGIN_METERS.
+        public static final double TOWER_MARGIN_METERS = 0.30;
+
+        // ---- Boundary hysteresis ----
+        // Every zone test above is a hard edge, and a robot parked on one would otherwise flip
+        // decisions every loop — swinging the turret between the hub and the shuttle aim point, or
+        // strobing the flywheel on and off. Once a boundary has been crossed, the robot has to come
+        // back this far past it before the decision flips again.
+        public static final double ZONE_HYSTERESIS_METERS = 0.15;
     }
 
     public static final class ShooterConstants{
@@ -66,7 +140,16 @@ public final class Constants {
         public static final double FLYWHEEL_GEAR_RATIO = 1;
         public static final double FLYWHEEL_LARGE_DIAMETER_METERS = 0.1016; // 4 inches
         public static final double FLYWHEEL_SMALL_DIAMETER_METERS = 0.0508; // 2 inches
-        public static final double FLYWHEEL_MAX_REV_PER_SEC = 70.0;
+        // Ceiling on the commanded flywheel speed. Sized from the longest shot the robot is
+        // actually asked to make: a shuttle pass from the far side of the opposing alliance zone,
+        // turret ~0.46 m (1.5 ft) off their back wall, driving parallel to that wall at the
+        // drivetrain's full 5.44 m/s. Solved over the whole length of that wall, the worst case
+        // asks for 69.3 RPS — a lateral sprint costs ~8 RPS over the same shot standing still,
+        // because the shooter has to cancel the robot's sideways velocity as well as reach the
+        // target. 80 leaves margin for that number to grow when the drag term (SPEED_PER_METER,
+        // still a first guess) gets tuned up, and is 80% of a Kraken X60's 100 RPS free speed,
+        // which is direct-drive here.
+        public static final double FLYWHEEL_MAX_REV_PER_SEC = 80.0;
         // Effective flywheel diameter used to convert motor RPS to muzzle velocity
         // for motion compensation flight-time estimation.
         // raw average: (0.1016 + 0.0508) / 2 = 0.0762m (3 inches)
@@ -144,13 +227,38 @@ public final class Constants {
         public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.45;
 
 
-        public static final double BLUE_SHUTTLE_TARGET_X_METERS = TAG_26_POSE.getX() - 0.25;
-        public static final double BLUE_SHUTTLE_TARGET_Y_METERS = TAG_26_POSE.getY();
-        public static final double BLUE_SHUTTLE_TARGET_Z_METERS = TAG_26_POSE.getZ() + 0;
+        // Shuttle passes are thrown to the carpet, not into the hub, so the aim point is the floor.
+        // The physics solver takes a real z and solves for where the ball actually comes down;
+        // borrowing the tag's height here (as this used to) told it to land the ball 1.2 m in the
+        // air, which lands every pass short of where it was aimed.
+        public static final double SHUTTLE_TARGET_Z_METERS = 0.0;
 
-        public static final double RED_SHUTTLE_TARGET_X_METERS = TAG_10_POSE.getX() + 0.25;
+        // How far to the side of the hub a shuttle pass lands. The pass is aimed to whichever side
+        // of the hub the shooter is already on, so the ball stays off the hub structure and comes
+        // down where a teammate on that side of the field can pick it up.
+        public static final double SHUTTLE_SIDE_OFFSET_METERS = 2.5;
+
+        // Rack angle held in storage/boost mode. RACK_MIN_ANGLE is the rack's lowest physical
+        // position (0 rack rotations), which is where it has to be to fit under a trench arm.
+        public static final double RACK_STORAGE_ANGLE_DEG = RACK_MIN_ANGLE;
+
+        // How far in front of the hub tag the pass lands, toward midfield. This used to sit 0.25 m
+        // *behind* the tag; moving it 1 m toward midfield takes a meter off every shuttle shot,
+        // which is a meter further back the robot can be standing when it takes one. The sideways
+        // offset applied in ShuttleMode keeps the ball clear of the hub structure itself, so
+        // landing level with the hub does not mean landing on it.
+        private static final double SHUTTLE_TARGET_MIDFIELD_OFFSET_METERS = 0.75;
+
+        public static final double BLUE_SHUTTLE_TARGET_X_METERS =
+            TAG_26_POSE.getX() + SHUTTLE_TARGET_MIDFIELD_OFFSET_METERS;
+        public static final double BLUE_SHUTTLE_TARGET_Y_METERS = TAG_26_POSE.getY();
+        public static final double BLUE_SHUTTLE_TARGET_Z_METERS = SHUTTLE_TARGET_Z_METERS;
+
+        // Red mirrors it: midfield is the other direction from the red hub.
+        public static final double RED_SHUTTLE_TARGET_X_METERS =
+            TAG_10_POSE.getX() - SHUTTLE_TARGET_MIDFIELD_OFFSET_METERS;
         public static final double RED_SHUTTLE_TARGET_Y_METERS = TAG_10_POSE.getY();
-        public static final double RED_SHUTTLE_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0;
+        public static final double RED_SHUTTLE_TARGET_Z_METERS = SHUTTLE_TARGET_Z_METERS;
 
         // Translation3d constants for easy use in commands
         public static final Translation3d BLUE_TARGET_POSITION = new Translation3d(

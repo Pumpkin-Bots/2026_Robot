@@ -1,29 +1,33 @@
 package frc.robot.commands;
 
 import edu.wpi.first.math.geometry.Translation3d;
-import edu.wpi.first.wpilibj.DriverStation;
-import edu.wpi.first.wpilibj.DriverStation.Alliance;
 import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj2.command.Command;
 import frc.robot.constants.Constants;
-import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.GroundIntakeSubsystem;
 import frc.robot.subsystems.TurretSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
+import frc.robot.utils.FieldZones;
 
+/**
+ * Shuttles every ball toward our own hub, unconditionally.
+ *
+ * <p>{@link ShooterMode} now picks shoot-vs-shuttle on its own from where the shooter is standing,
+ * so this is the manual override: it shuttles even from inside our own alliance zone. Kept bound to
+ * its own button, and registered as a PathPlanner named command, for autos and for the times a
+ * driver wants to force the pass.
+ */
 public class ShuttleMode extends Command {
     private final GroundIntakeSubsystem m_GroundIntake;
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
-    private final CommandSwerveDrivetrain m_Drivetrain;
     private final Timer m_timer = new Timer();
 
-    public ShuttleMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter, CommandSwerveDrivetrain drivetrain) {
+    public ShuttleMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
         m_GroundIntake = groundIntake;
         m_Turret = turret;
         m_Shooter = shooter;
-        m_Drivetrain = drivetrain;
-        
+
         addRequirements(m_GroundIntake, m_Turret, m_Shooter);
     }
 
@@ -45,27 +49,12 @@ public class ShuttleMode extends Command {
             ? -Constants.TurretConstants.TURRET_INDEXER_SPEED
             : Constants.TurretConstants.TURRET_INDEXER_SPEED);
 
-        // Select target based on alliance color (defaults to blue if unknown)
-        double tagY;
-        double targetX;
-        double targetZ;
-        var alliance = DriverStation.getAlliance();
-        if (alliance.isPresent() && alliance.get() == Alliance.Red) {
-            tagY = Constants.ShooterConstants.RED_SHUTTLE_TARGET_Y_METERS;
-            targetX = Constants.ShooterConstants.RED_SHUTTLE_TARGET_X_METERS;
-            targetZ = Constants.ShooterConstants.RED_SHUTTLE_TARGET_Z_METERS;
-        } else {
-            tagY = Constants.ShooterConstants.BLUE_SHUTTLE_TARGET_Y_METERS;
-            targetX = Constants.ShooterConstants.BLUE_SHUTTLE_TARGET_X_METERS;
-            targetZ = Constants.ShooterConstants.BLUE_SHUTTLE_TARGET_Z_METERS;
-        }
-
-        // Offset Y by +2 or -2 based on robot position relative to the tag
-        double robotY = m_Drivetrain.getState().Pose.getY();
-        double targetY = (robotY > tagY) ? tagY + 2.5 : tagY - 2.5;
-
-        Translation3d targetPosition = new Translation3d(targetX, targetY, targetZ);
-        m_Shooter.calculatePhysicsShooterActions(targetPosition);
+        // Alliance's shuttle drop, offset to whichever side of the field the shooter is already on
+        // (see FieldZones.shuttleTarget). Keyed off the shooter's launch point rather than the
+        // robot centre, the same as every other zone decision.
+        Translation3d targetPosition = FieldZones.shuttleTarget(
+            FieldZones.isRedAlliance(), m_Shooter.getLaunchPosition().getY());
+        m_Shooter.calculatePhysicsShuttleActions(targetPosition);
         if (m_timer.hasElapsed(0.75)) {
             m_GroundIntake.neutralMode();
         }

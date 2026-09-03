@@ -28,6 +28,7 @@ import edu.wpi.first.wpilibj2.command.Subsystem;
 import frc.robot.constants.Constants;
 import frc.robot.utils.AimSolver;
 import frc.robot.utils.AimSolver.AimSolution;
+import frc.robot.utils.AimSolver.ArcPolicy;
 import frc.robot.utils.ShooterTuning;
 import frc.robot.utils.TunableDouble;
 
@@ -44,6 +45,7 @@ public class ShooterSubsystem implements Subsystem {
     private final ShooterTuning m_tuning = new ShooterTuning();
     private boolean m_turretZeroed = false;
     private double m_lastCommandedTurretAngle = 0.0;
+    private double m_commandedFlywheelRps = 0.0;
     private AimSolution m_lastSolution = null;
 
     // ---- Simulation ----
@@ -272,6 +274,17 @@ public class ShooterSubsystem implements Subsystem {
     }
 
     /**
+     * Field-relative 3D position the ball leaves from, using the drivetrain's current pose estimate.
+     *
+     * <p>Zone decisions (shoot / shuttle / storage) key off this rather than the robot's centre: the
+     * launch point hangs off centre, so on a robot straddling a boundary the two genuinely disagree,
+     * and what matters is where the ball comes out.
+     */
+    public Translation3d getLaunchPosition() {
+        return calculateLaunchPosition(m_drivetrain.getState().Pose);
+    }
+
+    /**
      * Field-relative velocity of the ball's launch point.
      *
      * <p>This is not the same as the robot's velocity. The launch point sits off the robot's center,
@@ -400,6 +413,16 @@ public class ShooterSubsystem implements Subsystem {
      * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
      */
     public AimSolution solveAim(Translation3d targetPosition) {
+        return solveAim(targetPosition, ArcPolicy.DESCENT_MARGIN);
+    }
+
+    /**
+     * Solves for a firing solution against a field target without commanding anything.
+     *
+     * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
+     * @param policy         how the launch angle is chosen — see {@link ArcPolicy}
+     */
+    public AimSolution solveAim(Translation3d targetPosition, ArcPolicy policy) {
         Pose2d robotPose = m_drivetrain.getState().Pose;
         Translation3d launchPosition = calculateLaunchPosition(robotPose);
         Translation2d launchPointVel = calculateLaunchPointVelocity(robotPose);
@@ -410,7 +433,8 @@ public class ShooterSubsystem implements Subsystem {
             robotPose.getRotation().getRadians(),
             launchPointVel.getX(),
             launchPointVel.getY(),
-            m_tuning.snapshot());
+            m_tuning.snapshot(),
+            policy);
     }
 
     /**
@@ -425,7 +449,26 @@ public class ShooterSubsystem implements Subsystem {
      * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
      */
     public void calculatePhysicsShooterActions(Translation3d targetPosition) {
-        AimSolution solution = solveAim(targetPosition);
+        commandSolution(solveAim(targetPosition, ArcPolicy.DESCENT_MARGIN));
+    }
+
+    /**
+     * Same solve and the same commands, but with the arc pinned flat ({@link ArcPolicy#FLATTEST})
+     * instead of biased steep — the shuttle case.
+     *
+     * <p>A shuttle pass is thrown to the carpet, not into a goal, so the descent margin that keeps
+     * a hub shot from skimming the rim is buying nothing: it only trades flywheel speed and hang
+     * time for an arc shape that does not matter once the target is the floor. Holding the rack at
+     * its high stop asks the least of the flywheel at long range and puts the ball down sooner.
+     *
+     * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
+     */
+    public void calculatePhysicsShuttleActions(Translation3d targetPosition) {
+        commandSolution(solveAim(targetPosition, ArcPolicy.FLATTEST));
+    }
+
+    /** Records, publishes, and commands a solution. */
+    private void commandSolution(AimSolution solution) {
         m_lastSolution = solution;
         publishAimTelemetry(solution);
 
@@ -568,7 +611,18 @@ public class ShooterSubsystem implements Subsystem {
     public void setShooterFlywheelVelocity(double velocity) {
         double clamped = Math.max(-Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
             Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC, velocity));
+        m_commandedFlywheelRps = clamped;
         m_shooterFlywheelMotor.setControl(new VelocityVoltage(clamped));
+    }
+
+    /**
+     * Flywheel speed most recently commanded, in motor RPS. Distinct from
+     * {@link #getShooterFlywheelVelocityRps()}, which is what the wheel is actually doing — this is
+     * what it was asked for, so a caller can tell "the shooter is parked" from "the shooter is
+     * spinning down".
+     */
+    public double getCommandedFlywheelRps() {
+        return m_commandedFlywheelRps;
     }
 
     /** Returns the current flywheel speed in motor rotations per second (FLYWHEEL_GEAR_RATIO is 1, direct drive). */
