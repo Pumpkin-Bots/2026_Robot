@@ -35,12 +35,12 @@ public final class Constants {
         public static final int SHOOTER_FLYWHEEL_ID = 27;
 
 
-        public static final double ROTATOR_KP = 12; // optimal is 12, but too violent, need stronger wiring chain.
+        public static final double ROTATOR_KP = 18; // optimal is 12, but too violent, need stronger wiring chain.
         public static final double ROTATOR_KI = 0.0;
-        public static final double ROTATOR_KD = 0.35;
+        public static final double ROTATOR_KD = 0.5;
         // Velocity feedforward for turret omega tracking (V·s/rot, motor units).
         // Start at 0 (disabled), increment by ~0.05 until turret tracks robot rotation smoothly.
-        public static final double ROTATOR_KV = 0.125;
+        public static final double ROTATOR_KV = 0.6;
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
@@ -241,7 +241,7 @@ public final class Constants {
     public static final class TurretConstants {
         public static final int TURRET_INDEXER_ID = 28;
 
-        public static final double TURRET_INDEXER_SPEED = .65; // 60%
+        public static final double TURRET_INDEXER_SPEED = -.65; // 60%
 
         // ---- Feeder / indexer disturbance compensation ----
         // The feeder shoves the ball as it enters the turret, so the ball leaves carrying a little
