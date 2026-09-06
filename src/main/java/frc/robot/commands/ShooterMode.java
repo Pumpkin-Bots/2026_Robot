@@ -8,6 +8,7 @@ import frc.robot.constants.Constants;
 import frc.robot.subsystems.GroundIntakeSubsystem;
 import frc.robot.subsystems.TurretSubsystem;
 import frc.robot.subsystems.ShooterSubsystem;
+import frc.robot.utils.DashboardToggle;
 import frc.robot.utils.FieldZones;
 
 /**
@@ -22,7 +23,8 @@ import frc.robot.utils.FieldZones;
  *   <li>Under a trench arm or a tower → {@link StorageMode} outputs (rack down, flywheel and feeder
  *       off, turret still tracking), because no shot leaves the robot from there anyway. Drive speed
  *       is deliberately left alone: this is not boost mode, and the driver threading a trench does
- *       not want the robot to suddenly get faster.
+ *       not want the robot to suddenly get faster. This third case, and only this one, can be
+ *       switched off from the dashboard — see {@link #ZONE_STORAGE_ENABLED}.
  * </ul>
  *
  * <p>Every boundary is sticky by {@code ZONE_HYSTERESIS_METERS} so parking on a line doesn't strobe
@@ -34,6 +36,26 @@ import frc.robot.utils.FieldZones;
  * {@link #m_turretResetting}.
  */
 public class ShooterMode extends Command {
+    /**
+     * Operator switch for the trench/tower rule only, default on. Off means the shooter keeps
+     * shooting or shuttling from under a trench arm or a tower instead of dropping into storage.
+     *
+     * <p>It is here because that rule is the one part of this command running on surveyed field
+     * geometry rather than on something the robot can measure: if the constants in
+     * {@code FieldConstants} turn out to be off, or the field is not where odometry thinks it is,
+     * the symptom is a robot that refuses to shoot from somewhere it can plainly shoot from. This
+     * is the switch that gets the robot scoring again for the rest of the match.
+     *
+     * <p>Static because a fresh ShooterMode is constructed on every button press, and each instance
+     * holding its own NetworkTables entry on the same topic would leak a handle per press.
+     *
+     * <p>Scoped to the zone rule deliberately — the turret-reset gate below is not affected, since
+     * that one is driven by the turret's own measured state and shooting through it just throws
+     * fuel in a random direction.
+     */
+    public static final DashboardToggle ZONE_STORAGE_ENABLED =
+        new DashboardToggle("Shooter/TrenchTowerStorageEnabled", true);
+
     private final GroundIntakeSubsystem m_GroundIntake;
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
@@ -76,7 +98,8 @@ public class ShooterMode extends Command {
         Translation3d launch = m_Shooter.getLaunchPosition();
         m_shooting = FieldZones.isInOwnAllianceZone(
             launch.getX(), FieldZones.isRedAlliance(), false);
-        m_storage = FieldZones.isInNoShootZone(launch.getX(), launch.getY(), 0.0);
+        m_storage = ZONE_STORAGE_ENABLED.get()
+            && FieldZones.isInNoShootZone(launch.getX(), launch.getY(), 0.0);
 
         // Discard any wrap left flagged by a previous command, so this run doesn't open holding a
         // shot for a sweep that already finished.
@@ -99,8 +122,12 @@ public class ShooterMode extends Command {
             ? FieldZones.hubTarget(isRed)
             : FieldZones.shuttleTarget(isRed, shooterY);
 
-        m_storage = FieldZones.isInNoShootZone(shooterX, shooterY,
-            m_storage ? Constants.FieldConstants.ZONE_HYSTERESIS_METERS : 0.0);
+        // Switching the toggle off mid-match drops m_storage on the next loop, which the handoff
+        // below then sees as an ordinary storage exit — the intake is handed over the same way it
+        // would be on driving out of a trench.
+        m_storage = ZONE_STORAGE_ENABLED.get()
+            && FieldZones.isInNoShootZone(shooterX, shooterY,
+                m_storage ? Constants.FieldConstants.ZONE_HYSTERESIS_METERS : 0.0);
 
         // A wrap is only discovered while the turret is being commanded, so this picks up one
         // flagged by last loop's command — a single 20 ms cycle into a sweep that takes the better
