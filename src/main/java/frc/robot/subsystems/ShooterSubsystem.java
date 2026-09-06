@@ -74,6 +74,10 @@ public class ShooterSubsystem implements Subsystem {
         new TunableDouble("Tuning/Turret/kD", Constants.ShooterConstants.ROTATOR_KD);
     private final TunableDouble m_turretKV =
         new TunableDouble("Tuning/Turret/kV", Constants.ShooterConstants.ROTATOR_KV);
+    // Unlike the gains above, this never touches a Slot0Configs — it is read straight into the
+    // control request every loop, so there is no configurator round-trip and no re-apply guard.
+    private final TunableDouble m_turretKff =
+        new TunableDouble("Tuning/Turret/kFF", Constants.ShooterConstants.ROTATOR_KFF);
 
     // Last gains actually pushed to the motor, so the config is only re-applied when something
     // changes rather than every loop.
@@ -594,8 +598,39 @@ public class ShooterSubsystem implements Subsystem {
         // Counter-rotation: turret must spin at -omega to maintain field-relative aim.
         // Convert rad/s → turret rot/s → motor rot/s (gear ratio is negative, so signs cancel).
         double omega = m_velocityEstimator.getYawRateRadPerSec();
-        double motorVelRps = -omega / (2.0 * Math.PI) / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
-        m_turretRotatorMotor.setControl(new PositionVoltage(position).withVelocity(motorVelRps));
+        double turretRateRps = -omega / (2.0 * Math.PI);
+        double motorVelRps = turretRateRps / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
+        m_turretRotatorMotor.setControl(new PositionVoltage(position)
+            .withVelocity(motorVelRps)
+            .withFeedForward(turretFeedForwardVolts(turretRateRps, motorVelRps)));
+    }
+
+    /**
+     * One-directional static feedforward, in volts, for a commanded turret rate.
+     *
+     * <p>The wiring chain only spools against the turret one way round, so only that direction is
+     * assisted — the other returns zero rather than being pushed by an equal and opposite amount.
+     * That asymmetry is why this is an arbitrary feedforward on the request rather than Slot0
+     * {@code kS}, which always applies its magnitude in both directions.
+     *
+     * @param turretRateRps commanded turret rate, turret rotations per second (positive = CCW)
+     * @param motorVelRps   the same rate in motor rotations per second, whose sign the output takes
+     */
+    private double turretFeedForwardVolts(double turretRateRps, double motorVelRps) {
+        double kFF = m_turretKff.get();
+
+        // Near zero the direction is meaningless and would dither loop to loop, so hold the term
+        // off rather than leaning on a turret that is trying to hold still.
+        if (Math.abs(turretRateRps) * 360.0
+                < Constants.ShooterConstants.ROTATOR_KFF_DEADBAND_DEG_PER_SEC) {
+            return 0.0;
+        }
+
+        // Sign of kFF selects which direction gets the assist; magnitude is the voltage.
+        if (kFF == 0.0 || (kFF > 0.0) != (turretRateRps > 0.0)) {
+            return 0.0;
+        }
+        return Math.abs(kFF) * Math.signum(motorVelRps);
     }
 
     public void setShooterRackPosition(double position) {

@@ -116,6 +116,16 @@ public final class Constants {
         // Start at 0 (disabled), increment by ~0.05 until turret tracks robot rotation smoothly.
         public static final double ROTATOR_KV = 0.6;
 
+        // One-directional static feedforward, in volts, for the direction the wiring chain spools
+        // against. Only that direction gets the assist; the other gets nothing, since it is not the
+        // one fighting the chain. Positive assists CCW (increasing turret angle), negative assists
+        // CW — so the sign picks the direction and the magnitude is the voltage.
+        // Tunable live as Tuning/Turret/kFF. Start at 0 and raise until the lag closes.
+        public static final double ROTATOR_KFF = 0.0;
+        // Below this commanded turret rate the term is held off, so it does not creep the turret
+        // while it is trying to sit still. Deg/s of turret travel.
+        public static final double ROTATOR_KFF_DEADBAND_DEG_PER_SEC = 0.5;
+
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
         public static final double TURRET_ROTATOR_MAX_ANGLE = 300;
