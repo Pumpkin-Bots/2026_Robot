@@ -140,7 +140,7 @@ public final class Constants {
             .getTagPose(10)
             .orElseThrow();
         public static final double RED_TARGET_X_METERS = TAG_10_POSE.getX() - 0.597;
-        public static final double RED_TARGET_Y_METERS = TAG_10_POSE.getY() + 0;
+        public static final double RED_TARGET_Y_METERS = TAG_10_POSE.getY() - .1;
         public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.45;
 
 
@@ -333,7 +333,7 @@ public final class Constants {
 
         // ---- Roller / indexer speeds ----
         public static final double INDEXER_TO_ROLLER_RATIO = 0.9244;
-        public static final double ROLLER_INTAKE_SPEED = 0.75;
+        public static final double ROLLER_INTAKE_SPEED = 0.95;
         public static final double RIGHT_INDEXER_SPEED = ROLLER_INTAKE_SPEED * INDEXER_TO_ROLLER_RATIO; // 60% duty cycle
         public static final double LEFT_INDEXER_SPEED = -RIGHT_INDEXER_SPEED; // 60% duty cycle
         public static final double ROLLER_JAM_SPEED = -0.2; // 20% duty cycle
