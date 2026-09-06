@@ -115,6 +115,10 @@ public final class Constants {
         // Velocity feedforward for turret omega tracking (V·s/rot, motor units).
         // Start at 0 (disabled), increment by ~0.05 until turret tracks robot rotation smoothly.
         public static final double ROTATOR_KV = 0.6;
+        // Static friction feedforward, in volts, applied by Slot0 in whichever direction the closed
+        // loop is driving — symmetric, unlike ROTATOR_KFF below. Tunable live as Tuning/Turret/kS.
+        // Start at 0 and raise until the turret just begins to break away from a small error.
+        public static final double ROTATOR_KS = 0.0;
 
         // One-directional static feedforward, in volts, for the direction the wiring chain spools
         // against. Only that direction gets the assist; the other gets nothing, since it is not the

@@ -74,6 +74,8 @@ public class ShooterSubsystem implements Subsystem {
         new TunableDouble("Tuning/Turret/kD", Constants.ShooterConstants.ROTATOR_KD);
     private final TunableDouble m_turretKV =
         new TunableDouble("Tuning/Turret/kV", Constants.ShooterConstants.ROTATOR_KV);
+    private final TunableDouble m_turretKS =
+        new TunableDouble("Tuning/Turret/kS", Constants.ShooterConstants.ROTATOR_KS);
     // Unlike the gains above, this never touches a Slot0Configs — it is read straight into the
     // control request every loop, so there is no configurator round-trip and no re-apply guard.
     private final TunableDouble m_turretKff =
@@ -85,12 +87,14 @@ public class ShooterSubsystem implements Subsystem {
     private double m_appliedTurretKI = Constants.ShooterConstants.ROTATOR_KI;
     private double m_appliedTurretKD = Constants.ShooterConstants.ROTATOR_KD;
     private double m_appliedTurretKV = Constants.ShooterConstants.ROTATOR_KV;
+    private double m_appliedTurretKS = Constants.ShooterConstants.ROTATOR_KS;
 
     private static final Slot0Configs turretRotatorGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.ROTATOR_KP)
         .withKI(Constants.ShooterConstants.ROTATOR_KI)
         .withKD(Constants.ShooterConstants.ROTATOR_KD)
-        .withKV(Constants.ShooterConstants.ROTATOR_KV);
+        .withKV(Constants.ShooterConstants.ROTATOR_KV)
+        .withKS(Constants.ShooterConstants.ROTATOR_KS);
 
     private static final Slot0Configs rackGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.RACK_KP)
@@ -745,14 +749,17 @@ public class ShooterSubsystem implements Subsystem {
         double kI = m_turretKI.get();
         double kD = m_turretKD.get();
         double kV = m_turretKV.get();
+        double kS = m_turretKS.get();
         if (kP != m_appliedTurretKP || kI != m_appliedTurretKI
-                || kD != m_appliedTurretKD || kV != m_appliedTurretKV) {
+                || kD != m_appliedTurretKD || kV != m_appliedTurretKV
+                || kS != m_appliedTurretKS) {
             m_appliedTurretKP = kP;
             m_appliedTurretKI = kI;
             m_appliedTurretKD = kD;
             m_appliedTurretKV = kV;
+            m_appliedTurretKS = kS;
             m_turretRotatorMotor.getConfigurator().apply(
-                new Slot0Configs().withKP(kP).withKI(kI).withKD(kD).withKV(kV));
+                new Slot0Configs().withKP(kP).withKI(kI).withKD(kD).withKV(kV).withKS(kS));
         }
     }
 
