@@ -153,10 +153,10 @@ public final class Constants {
         // MAX Rotations is at maximum height (lower shot)
         // MIN Rotations is at minimum height (higher shot)
 
-        public static final double FLYWHEEL_KP = 0.1;
+        public static final double FLYWHEEL_KP = 0.5;
         public static final double FLYWHEEL_KI = 0;
         public static final double FLYWHEEL_KD = 0;
-        public static final double FLYWHEEL_KV = 0.13;
+        public static final double FLYWHEEL_KV = 0.125;
 
         public static final double FLYWHEEL_GEAR_RATIO = 1;
         public static final double FLYWHEEL_LARGE_DIAMETER_METERS = 0.1016; // 4 inches
