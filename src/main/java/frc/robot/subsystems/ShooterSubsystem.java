@@ -45,6 +45,11 @@ public class ShooterSubsystem implements Subsystem {
     private final ShooterTuning m_tuning = new ShooterTuning();
     private boolean m_turretZeroed = false;
     private double m_lastCommandedTurretAngle = 0.0;
+    // Set by angleToTurretPosition() when it swaps the target 360° to the other side of the
+    // range, and cleared by consumeTurretWrap(). This is the "turret spins all the way around to
+    // reset itself" event, and it is a discrete event rather than a threshold on tracking error
+    // precisely so a turret that is merely lagging can never be mistaken for one that is unwrapping.
+    private boolean m_turretWrapped = false;
     private double m_commandedFlywheelRps = 0.0;
     private AimSolution m_lastSolution = null;
 
@@ -531,11 +536,15 @@ public class ShooterSubsystem implements Subsystem {
         double delta = ((angleDeg - m_lastCommandedTurretAngle + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
         double target = m_lastCommandedTurretAngle + delta;
 
-        // If the unwrapped angle exceeds a limit, swap to the other side
+        // If the unwrapped angle exceeds a limit, swap to the other side. That swap is the turret
+        // committing to a full sweep the long way round, so flag it — nothing points at the target
+        // until the sweep finishes. See consumeTurretWrap().
         if (target > max) {
             target -= 360.0;
+            m_turretWrapped = true;
         } else if (target < min) {
             target += 360.0;
+            m_turretWrapped = true;
         }
 
         // Safety clamp (shouldn't activate with >360° range)
@@ -576,6 +585,28 @@ public class ShooterSubsystem implements Subsystem {
     public double getTurretRotatorAngleDeg() {
         return m_turretRotatorMotor.getPosition().getValueAsDouble()
             * Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO * 360.0;
+    }
+
+    /**
+     * How far the turret still has to travel to reach its commanded angle, in degrees (commanded
+     * minus measured). Unwrapped, so a turret partway through a 360° reset reads a few hundred
+     * degrees rather than folding back into ±180°.
+     */
+    public double getTurretErrorDeg() {
+        return m_lastCommandedTurretAngle - getTurretRotatorAngleDeg();
+    }
+
+    /**
+     * True once if the turret has wrapped 360° to the other side of its range since this was last
+     * called, then false again until the next wrap — see {@link #angleToTurretPosition}.
+     *
+     * <p>Reading it clears it, so exactly one caller can act on each wrap. That caller is
+     * {@code ShooterMode}, which holds the shot until the sweep has finished.
+     */
+    public boolean consumeTurretWrap() {
+        boolean wrapped = m_turretWrapped;
+        m_turretWrapped = false;
+        return wrapped;
     }
 
     /** Returns the current shooter rack angle in degrees (same convention as {@link #setShooterRackAngle}). */

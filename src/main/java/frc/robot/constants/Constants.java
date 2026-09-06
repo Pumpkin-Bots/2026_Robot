@@ -134,6 +134,13 @@ public final class Constants {
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
         public static final double TURRET_ROTATOR_MAX_ANGLE = 300;
 
+        // How close the turret has to get to its commanded angle before a wrap counts as finished.
+        // Only consulted while the turret is unwrapping — see ShooterSubsystem.consumeTurretWrap()
+        // and the reset gate in ShooterMode. Plain tracking error, however large, never engages
+        // that gate, so this is not a "the shot is good enough" tolerance and shooting is not
+        // otherwise held off on it.
+        public static final double TURRET_RESET_TOLERANCE_DEG = 10.0;
+
 
         public static final double RACK_KP = 20;
         public static final double RACK_KI = 0.0;

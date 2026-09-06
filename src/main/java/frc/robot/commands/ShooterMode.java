@@ -27,6 +27,11 @@ import frc.robot.utils.FieldZones;
  *
  * <p>Every boundary is sticky by {@code ZONE_HYSTERESIS_METERS} so parking on a line doesn't strobe
  * the flywheel or swing the turret back and forth.
+ *
+ * <p>A fourth, non-geometric reason to drop into storage outputs: the turret has run out of range
+ * and is sweeping the long way round to the other side. Nothing is pointed at the target for the
+ * whole of that sweep, so a shot taken during it goes wherever the turret happens to be. See
+ * {@link #m_turretResetting}.
  */
 public class ShooterMode extends Command {
     private final GroundIntakeSubsystem m_GroundIntake;
@@ -37,6 +42,20 @@ public class ShooterMode extends Command {
     // Previous frame's decisions, fed back in as the hysteresis bias.
     private boolean m_shooting = false;
     private boolean m_storage = false;
+
+    // Set when the turret wraps 360° to the other side of its range, cleared once it has arrived
+    // within TURRET_RESET_TOLERANCE_DEG of the commanded angle. Held in storage outputs throughout.
+    //
+    // Deliberately latched off the discrete wrap event rather than off "error exceeds the
+    // tolerance": a turret merely lagging a fast-rotating robot is still roughly on target and
+    // still worth shooting through, and gating on error alone would drop a turret with a soft PID
+    // or a tight wiring chain in and out of storage all match instead of letting it shoot.
+    private boolean m_turretResetting = false;
+
+    // Whether storage outputs were applied last loop, for either reason. The intake handoff below
+    // keys off this rather than off the zone alone, so a turret reset hands the intake over the
+    // same way a trench does.
+    private boolean m_storageOutputs = false;
 
     public ShooterMode(GroundIntakeSubsystem groundIntake, TurretSubsystem turret, ShooterSubsystem shooter) {
         m_GroundIntake = groundIntake;
@@ -58,6 +77,12 @@ public class ShooterMode extends Command {
         m_shooting = FieldZones.isInOwnAllianceZone(
             launch.getX(), FieldZones.isRedAlliance(), false);
         m_storage = FieldZones.isInNoShootZone(launch.getX(), launch.getY(), 0.0);
+
+        // Discard any wrap left flagged by a previous command, so this run doesn't open holding a
+        // shot for a sweep that already finished.
+        m_Shooter.consumeTurretWrap();
+        m_turretResetting = false;
+        m_storageOutputs = m_storage;
     }
 
     @Override
@@ -74,11 +99,23 @@ public class ShooterMode extends Command {
             ? FieldZones.hubTarget(isRed)
             : FieldZones.shuttleTarget(isRed, shooterY);
 
-        boolean storage = FieldZones.isInNoShootZone(shooterX, shooterY,
+        m_storage = FieldZones.isInNoShootZone(shooterX, shooterY,
             m_storage ? Constants.FieldConstants.ZONE_HYSTERESIS_METERS : 0.0);
 
-        if (storage != m_storage) {
-            m_storage = storage;
+        // A wrap is only discovered while the turret is being commanded, so this picks up one
+        // flagged by last loop's command — a single 20 ms cycle into a sweep that takes the better
+        // part of a second, which is not long enough to get a ball out of the feeder.
+        if (m_Shooter.consumeTurretWrap()) {
+            m_turretResetting = true;
+        }
+        if (m_turretResetting && Math.abs(m_Shooter.getTurretErrorDeg())
+                < Constants.ShooterConstants.TURRET_RESET_TOLERANCE_DEG) {
+            m_turretResetting = false;
+        }
+
+        boolean storageOutputs = m_storage || m_turretResetting;
+        if (storageOutputs != m_storageOutputs) {
+            m_storageOutputs = storageOutputs;
             // Each crossing hands the intake off clean: entering gets a fresh chance to fill,
             // leaving gets an intake that will actually intake again.
             m_GroundIntake.resetHopperLatch();
@@ -86,9 +123,14 @@ public class ShooterMode extends Command {
         }
 
         SmartDashboard.putString("Shooter/Mode",
-            m_storage ? "STORAGE" : (m_shooting ? "SHOOT" : "SHUTTLE"));
+            m_storage ? "STORAGE"
+                : m_turretResetting ? "TURRET_RESET"
+                : m_shooting ? "SHOOT" : "SHUTTLE");
+        SmartDashboard.putBoolean("Shooter/TurretResetting", m_turretResetting);
 
-        if (m_storage) {
+        if (storageOutputs) {
+            // The turret is still commanded at the target inside here, so the sweep it is already
+            // committed to carries on and the reset finishes as fast as it would have anyway.
             StorageMode.applyStorageOutputs(m_GroundIntake, m_Turret, m_Shooter, target);
             return;
         }
