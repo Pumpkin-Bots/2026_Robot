@@ -74,6 +74,9 @@ public class GroundIntakeSubsystem implements Subsystem {
     private boolean m_unjamming = false;
     private final Timer m_unjamTimer = new Timer();
 
+    // Latched by runIntakeUntilJam() the first time the roller stalls; see that method.
+    private boolean m_hopperFull = false;
+
     // Reusable control requests
     private final MotionMagicVoltage m_pivotRequest = new MotionMagicVoltage(0).withSlot(0);
     private double m_pivotTargetPosition = 0.0;
@@ -346,6 +349,55 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rollerStalled = false;
     }
 
+    /**
+     * Runs the intake inward until the roller jams once, then latches off and stays off until
+     * {@link #resetHopperLatch()}. This is how storage/boost mode turns the intake into a hopper:
+     * it keeps collecting fuel while there is room, and the first jam is taken as "full" rather
+     * than as something to clear, so the robot stops grinding balls against a packed throat.
+     *
+     * <p>Deliberately does NOT auto-unjam — the jam is the signal, not a fault. Call once per loop
+     * from a command's execute().
+     *
+     * <p>Note that {@link #isRollerStalled()} is always false in simulation (the roller's sim state
+     * isn't driven), so in sim this never latches and the intake just keeps running.
+     *
+     * @return true once the hopper has latched full and the intake is stopped
+     */
+    public boolean runIntakeUntilJam() {
+        if (m_rollerStalled) {
+            m_hopperFull = true;
+        }
+
+        if (m_hopperFull) {
+            setRollerSpeed(0.0);
+            setLeftIndexerMotorSpeed(0.0);
+            setRightIndexerMotorSpeed(0.0);
+        } else {
+            setRollerSpeed(Constants.GroundIntakeConstants.ROLLER_INTAKE_SPEED);
+            setLeftIndexerMotorSpeed(Constants.GroundIntakeConstants.LEFT_INDEXER_SPEED);
+            setRightIndexerMotorSpeed(Constants.GroundIntakeConstants.RIGHT_INDEXER_SPEED);
+        }
+
+        return m_hopperFull;
+    }
+
+    /**
+     * Clears the hopper-full latch and the stall detector's history, so {@link #runIntakeUntilJam()}
+     * starts intaking again. Called on both entry to and exit from storage behaviour — leaving
+     * storage has to hand a clean intake to whatever runs next, and re-entering it should get a
+     * fresh chance to fill rather than inheriting the last jam.
+     */
+    public void resetHopperLatch() {
+        m_hopperFull = false;
+        m_rollerStallStartTime = -1.0;
+        m_rollerStalled = false;
+    }
+
+    /** True while the hopper-full latch is set — see {@link #runIntakeUntilJam()}. */
+    public boolean isHopperFull() {
+        return m_hopperFull;
+    }
+
     public void setLeftIndexerMotorSpeed(double speed) {
         m_leftIndexerMotor.set(speed);
     }
@@ -411,6 +463,7 @@ public class GroundIntakeSubsystem implements Subsystem {
         SmartDashboard.putNumber("Intake/RollerVelocity", rps);
         SmartDashboard.putBoolean("Intake/RollerStalled", m_rollerStalled);
         SmartDashboard.putBoolean("Intake/Unjamming", m_unjamming);
+        SmartDashboard.putBoolean("Intake/HopperFull", m_hopperFull);
     }
 
     public Command disabledCommand() {

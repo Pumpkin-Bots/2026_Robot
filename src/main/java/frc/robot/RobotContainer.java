@@ -19,8 +19,10 @@ import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Commands;
+import edu.wpi.first.wpilibj2.command.CommandScheduler;
 import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
+import edu.wpi.first.wpilibj2.command.button.Trigger;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 
 import org.ironmaple.simulation.SimulatedArena;
@@ -30,6 +32,7 @@ import frc.robot.commands.TrenchMode;
 import frc.robot.commands.ShooterMode;
 import frc.robot.commands.JamMode;
 import frc.robot.commands.ShuttleMode;
+import frc.robot.commands.StorageMode;
 import frc.robot.commands.TestCommand;
 import frc.robot.constants.Constants;
 
@@ -95,7 +98,7 @@ public class RobotContainer {
         NamedCommands.registerCommand("TrenchMode", new TrenchMode(intake, turret, shooter));
         NamedCommands.registerCommand("ShooterMode", new ShooterMode(intake, turret, shooter));
         NamedCommands.registerCommand("JamMode", new JamMode(intake, turret, shooter));
-        NamedCommands.registerCommand("ShuttleMode", new ShuttleMode(intake, turret, shooter, drivetrain));
+        NamedCommands.registerCommand("ShuttleMode", new ShuttleMode(intake, turret, shooter));
         //NamedCommands.registerCommand("TestCommand", new TestCommand(turret));
 
     }
@@ -128,6 +131,51 @@ public class RobotContainer {
             : joystick.getLeftTriggerAxis();
     }
 
+    /**
+     * Left trigger, 0 to 1 — holds storage mode. Reads flat zero in simulation: the sim's raw axis
+     * order on this Mac doesn't match the Driver Station's, and the left trigger is already spoken
+     * for there by {@link #getFireTriggerInput()}, so storage and boost are simply disabled in sim
+     * rather than fighting over an axis.
+     */
+    private double getStorageTriggerInput() {
+        return RobotBase.isSimulation() ? 0.0 : joystick.getLeftTriggerAxis();
+    }
+
+    /** Right trigger, 0 to 1 — holds boost mode. Disabled in simulation, same as storage. */
+    private double getBoostTriggerInput() {
+        return RobotBase.isSimulation() ? 0.0 : joystick.getRightTriggerAxis();
+    }
+
+    // ---- Shooter-mode sub-states ----
+    // Storage and boost are sub-functions of shooter mode from the driver's seat: the triggers do
+    // nothing from defense, trench, jam, or shuttle mode, and releasing one drops straight back into
+    // shooter mode. This flag is what "we are in shooter mode" means for that gate — set by the mode
+    // buttons below, and false the moment any other mode takes over.
+    private boolean m_shooterModeActive = false;
+
+    /** Applies a mode's drive speeds and records whether it is shooter mode. */
+    private void enterMode(boolean isShooterMode, Runnable speeds) {
+        m_shooterModeActive = isShooterMode;
+        speeds.run();
+    }
+
+    /**
+     * Re-enters shooter mode after storage or boost is released. A fresh instance is built each
+     * time: the one bound to the A button lives inside an alongWith() composition and can't be
+     * scheduled on its own.
+     *
+     * <p>No-ops if shooter mode is no longer active — that happens when the driver presses another
+     * mode button while still holding the trigger, and they should get the mode they just asked for,
+     * not get yanked back into shooter mode when they let go.
+     */
+    private void restoreShooterMode() {
+        if (!m_shooterModeActive) {
+            return;
+        }
+        setShooterModeSpeeds();
+        CommandScheduler.getInstance().schedule(new ShooterMode(intake, turret, shooter));
+    }
+
     private void configureBindings() {
         // Note that X is defined as forward according to WPILib convention,
         // and Y is defined as to the left according to WPILib convention.
@@ -150,26 +198,58 @@ public class RobotContainer {
     //TO DO:    joystick.rightbumper().whileTrue(drivetrain.applyRequest(() -> brake));
 
         // ---- Intake / robot-mode buttons ----
-        // A → shooter mode  (pivot to -4 rot / horizontal, rollers at 20 %, REDUCED DRIVE SPEED)
-        // B → trench mode   (pivot to -2 rot / ~45°, rollers off, normal drive speed)
-        // Y → home position (pivot to 0 rot / vertical, rollers off, normal drive speed)
-        // X → jam mode      (pivot at current position, rollers reverse, normal drive speed)
+        // A  → shooter mode  (intake + auto shoot/shuttle/storage by field position, 25 % drive)
+        // B  → trench mode   (pivot to -2 rot / ~45°, rollers off, normal drive speed)
+        // Y  → shuttle mode  (force a shuttle pass from anywhere, 25 % drive)
+        // X  → jam mode      (pivot at current position, rollers reverse, normal drive speed)
+        // RB → defense mode  (intake stowed, normal drive speed)
+        //
+        // Each of these latches: it runs until something else takes the subsystems.
 
         joystick.rightBumper().onTrue(
-            new DefenseMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setNormalSpeeds))
+            new DefenseMode(intake, turret, shooter).alongWith(
+                Commands.runOnce(() -> enterMode(false, this::setNormalSpeeds)))
         );
         joystick.b().onTrue(
-            new TrenchMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setNormalSpeeds))
+            new TrenchMode(intake, turret, shooter).alongWith(
+                Commands.runOnce(() -> enterMode(false, this::setNormalSpeeds)))
         );
         joystick.a().onTrue(
-            new ShooterMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setShooterModeSpeeds))
+            new ShooterMode(intake, turret, shooter).alongWith(
+                Commands.runOnce(() -> enterMode(true, this::setShooterModeSpeeds)))
         );
         joystick.x().onTrue(
-            new JamMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setNormalSpeeds))
+            new JamMode(intake, turret, shooter).alongWith(
+                Commands.runOnce(() -> enterMode(false, this::setNormalSpeeds)))
         );
         joystick.y().onTrue(
-            new ShuttleMode(intake, turret, shooter, drivetrain).alongWith(Commands.runOnce(this::setShooterModeSpeeds))
+            new ShuttleMode(intake, turret, shooter).alongWith(
+                Commands.runOnce(() -> enterMode(false, this::setShooterModeSpeeds)))
         );
+
+        // ---- Shooter-mode sub-states, held on the triggers ----
+        // Left trigger  → storage mode: stop shooting, carry fuel, keep the 25 % shooter-mode speed.
+        // Right trigger → boost mode: the same storage outputs at full drive speed, for sprinting
+        //                 to the next pile without dumping power into a flywheel you aren't using.
+        // Both are gated on shooter mode being active, so a trigger pressed from defense, trench,
+        // jam, or shuttle mode does nothing at all. Releasing either returns to shooter mode.
+        // Boost wins if both are held — it is the more specific request.
+        final double triggerThreshold = Constants.DriveConstants.MODE_TRIGGER_THRESHOLD;
+        Trigger storageTrigger = new Trigger(
+            () -> m_shooterModeActive && getStorageTriggerInput() >= triggerThreshold);
+        Trigger boostTrigger = new Trigger(
+            () -> m_shooterModeActive && getBoostTriggerInput() >= triggerThreshold);
+
+        boostTrigger.whileTrue(
+            new StorageMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setBoostSpeeds))
+        );
+        storageTrigger.and(boostTrigger.negate()).whileTrue(
+            new StorageMode(intake, turret, shooter).alongWith(Commands.runOnce(this::setShooterModeSpeeds))
+        );
+
+        // Registered after both whileTrue bindings so that on the loop a trigger is released, the
+        // storage command is cancelled before this reschedules shooter mode underneath it.
+        storageTrigger.or(boostTrigger).onFalse(Commands.runOnce(this::restoreShooterMode));
 
         // Zero turret encoder on first enable (turret must be facing forward).
         RobotModeTriggers.disabled().onFalse(Commands.runOnce(() -> shooter.zeroTurretEncoderOnce()));
@@ -268,6 +348,12 @@ public class RobotContainer {
      * on a real robot, since launchProjectile() itself is a no-op there.
      */
     public void updateAutoFire() {
+        // Nothing leaves a parked flywheel. Besides being physically right, this is what keeps the
+        // left trigger from both entering storage mode and firing the sim's projectiles at once.
+        if (shooter.getCommandedFlywheelRps() <= 0.0) {
+            return;
+        }
+
         double rate = getFireTriggerInput() * MAX_PROJECTILE_FIRE_RATE_PER_SEC;
         if (rate <= 0.0) {
             return;
@@ -287,6 +373,12 @@ public class RobotContainer {
      * always false there).
      */
     public void updateIntakeAutoFire() {
+        // Same gate as updateAutoFire(): in storage/boost mode the flywheel is off and the feeder is
+        // stopped, so picked-up fuel should stay in the hopper rather than teleporting out the barrel.
+        if (shooter.getCommandedFlywheelRps() <= 0.0) {
+            return;
+        }
+
         if (intake.hasFuel() && intake.tryConsumeFuel()) {
             shooter.launchProjectile();
         }
@@ -298,6 +390,15 @@ public class RobotContainer {
     public void setShooterModeSpeeds() {
         MaxSpeed = BaseMaxSpeed * Constants.DriveConstants.SHOOTER_MODE_MAX_SPEED_MULTIPLIER;
         MaxAngularRate = BaseMaxAngularRate * Constants.DriveConstants.SHOOTER_MODE_MAX_ANGULAR_RATE_MULTIPLIER;
+    }
+
+    /**
+     * Sets the drivetrain to boost mode speeds (full authority — the shooter is parked, so all the
+     * power goes into getting to the next pile of fuel).
+     */
+    public void setBoostSpeeds() {
+        MaxSpeed = BaseMaxSpeed * Constants.DriveConstants.BOOST_MAX_SPEED_MULTIPLIER;
+        MaxAngularRate = BaseMaxAngularRate * Constants.DriveConstants.BOOST_MAX_ANGULAR_RATE_MULTIPLIER;
     }
 
     /**

@@ -52,11 +52,30 @@ src/main/deploy/
 ### Controller Bindings (Xbox port 0)
 - Left stick: Field-centric translation
 - Right stick X: Rotation
-- A button: Brake mode (X-pattern)
-- B button: Point wheels toward left stick direction
+- A button: Shooter mode — intake + auto shoot/shuttle/storage by field position (25% drive speed)
+- B button: Trench mode (intake deployed, rollers off, normal drive speed)
+- X button: Jam mode (rollers reverse, normal drive speed)
+- Y button: Shuttle mode — force a shuttle pass from anywhere (25% drive speed)
+- Right bumper: Defense mode (intake stowed, normal drive speed)
+- Left trigger (≥20%): Storage mode — flywheel/feeder off, rack down, intake acts as a hopper (25% drive speed)
+- Right trigger (≥20%): Boost mode — storage outputs at 100% drive speed
 - Left bumper: Reset field-centric heading
 - Back+Y/X: SysId dynamic forward/reverse
 - Start+Y/X: SysId quasistatic forward/reverse
+
+The five button modes latch until another takes over. Storage and boost are sub-states of shooter
+mode: the triggers do nothing unless shooter mode is active, and releasing either returns to shooter
+mode (`RobotContainer.m_shooterModeActive` / `restoreShooterMode`). Both triggers are disabled in
+simulation — the sim's raw axis order on this Mac doesn't match the Driver Station's, and the left
+trigger is already the sim's manual-fire control.
+
+### Field-Position Logic
+`ShooterMode` decides what to do every loop from where the **shooter's launch point** is (not the
+robot centre), using `FieldZones` + `Constants.FieldConstants`: own alliance zone → shoot at the hub;
+neutral or opponent zone → shuttle; under a trench arm or tower → storage outputs (drive speed
+unchanged). All boundaries are sticky by `ZONE_HYSTERESIS_METERS`. The trench/tower/alliance-zone
+geometry in `FieldConstants` is derived from the 2026 AprilTag layout and the game manual — re-measure
+and edit those constants rather than the command logic.
 
 ## Naming Conventions
 

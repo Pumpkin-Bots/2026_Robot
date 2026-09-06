@@ -37,6 +37,29 @@ public final class AimSolver {
     private AimSolver() {}
 
     /**
+     * How the launch angle gets chosen before any of the velocity corrections run.
+     *
+     * <p>Both options end up in the same place mechanically — a rack angle — but they answer
+     * different questions, so the choice belongs to the caller rather than being buried in tuning.
+     */
+    public enum ArcPolicy {
+        /**
+         * Steepest-safe: bias a fixed margin above the minimum-energy angle so the ball is on its
+         * way down when it arrives. This is what a shot into the hub wants, because entering the
+         * goal descending is the whole point.
+         */
+        DESCENT_MARGIN,
+
+        /**
+         * Pin the rack against its high stop, giving the flattest trajectory the mechanism can
+         * produce. This is what a shuttle pass wants: the ball is going to the carpet, where
+         * arriving descending buys nothing, and the flattest arc needs the least flywheel speed and
+         * spends the least time in the air on the way across the field.
+         */
+        FLATTEST
+    }
+
+    /**
      * Passes used to converge the feeder correction against the turret angle it depends on. Two is
      * already past the point where the answer stops moving; three costs nothing and leaves margin
      * if the push values ever get tuned much larger.
@@ -127,7 +150,8 @@ public final class AimSolver {
     }
 
     /**
-     * Solves for the turret, rack, and flywheel commands that put a ball on the target.
+     * Solves for the turret, rack, and flywheel commands that put a ball on the target, using the
+     * descending-arc policy appropriate for a shot into the goal.
      *
      * @param target           field-relative position of the target
      * @param launchPosition   field-relative position the ball leaves from
@@ -143,6 +167,29 @@ public final class AimSolver {
             double launchPointVelX,
             double launchPointVelY,
             AimTuning t) {
+        return solve(target, launchPosition, robotHeadingRad,
+            launchPointVelX, launchPointVelY, t, ArcPolicy.DESCENT_MARGIN);
+    }
+
+    /**
+     * Solves for the turret, rack, and flywheel commands that put a ball on the target.
+     *
+     * @param target           field-relative position of the target
+     * @param launchPosition   field-relative position the ball leaves from
+     * @param robotHeadingRad  robot heading, field-relative, in radians
+     * @param launchPointVelX  field-relative X velocity of the launch point (not the robot center)
+     * @param launchPointVelY  field-relative Y velocity of the launch point
+     * @param t                calibration snapshot
+     * @param policy           how to pick the launch angle before the corrections run
+     */
+    public static AimSolution solve(
+            Translation3d target,
+            Translation3d launchPosition,
+            double robotHeadingRad,
+            double launchPointVelX,
+            double launchPointVelY,
+            AimTuning t,
+            ArcPolicy policy) {
 
         double dx = target.getX() - launchPosition.getX();
         double dy = target.getY() - launchPosition.getY();
@@ -154,10 +201,19 @@ public final class AimSolver {
         double flattestRad = Math.toRadians(90.0 - t.rackMaxAngleDeg());
         double steepestRad = Math.toRadians(90.0 - t.rackMinAngleDeg());
 
-        double minEnergyRad = Math.PI / 4 + 0.5 * Math.atan2(dz, horizontalDist);
-        double desiredRad = minEnergyRad + Math.toRadians(t.descentMarginDeg());
-        double launchAngleRad = MathUtil.clamp(desiredRad, flattestRad, steepestRad);
-        boolean rackClamped = Math.abs(launchAngleRad - desiredRad) > 1e-9;
+        double launchAngleRad;
+        boolean rackClamped;
+        if (policy == ArcPolicy.FLATTEST) {
+            // Sitting on the rack's high stop is the request here, not a compromise, so this does
+            // not count as clamped — nothing was taken away from the solve.
+            launchAngleRad = flattestRad;
+            rackClamped = false;
+        } else {
+            double minEnergyRad = Math.PI / 4 + 0.5 * Math.atan2(dz, horizontalDist);
+            double desiredRad = minEnergyRad + Math.toRadians(t.descentMarginDeg());
+            launchAngleRad = MathUtil.clamp(desiredRad, flattestRad, steepestRad);
+            rackClamped = Math.abs(launchAngleRad - desiredRad) > 1e-9;
+        }
         boolean feasible = true;
 
         // From dz = d*tan(theta) - g*d^2 / (2*v^2*cos^2(theta)), solved for v. The denominator is
@@ -222,6 +278,13 @@ public final class AimSolver {
         double turretAngleDeg =
             Math.toDegrees(outBearingRad) - Math.toDegrees(robotHeadingRad) + t.turretOffsetDeg();
         double rackAngleDeg = 90.0 - Math.toDegrees(outElevationRad) + t.rackOffsetDeg();
+        // The motion corrections tilt the commanded elevation away from the angle solved for above,
+        // so a command that started inside the rack's travel can finish outside it — most obviously
+        // when the arc is already pinned flat and the robot is driving away from the target. The
+        // mechanism will clamp that silently; say so instead.
+        if (rackAngleDeg < t.rackMinAngleDeg() - 1e-9 || rackAngleDeg > t.rackMaxAngleDeg() + 1e-9) {
+            rackClamped = true;
+        }
         double flywheelRps =
             outSpeed / (Math.PI * t.flywheelDiameterMeters()) + t.flywheelRpsOffset();
 

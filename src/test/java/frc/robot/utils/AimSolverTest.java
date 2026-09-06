@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import edu.wpi.first.math.geometry.Translation3d;
 import frc.robot.utils.AimSolver.AimSolution;
 import frc.robot.utils.AimSolver.AimTuning;
+import frc.robot.utils.AimSolver.ArcPolicy;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -111,9 +112,21 @@ class AimSolverTest {
             double launchPointVelX,
             double launchPointVelY,
             AimTuning t) {
+        assertLandsOnTarget(target, launchPosition, robotHeadingRad,
+            launchPointVelX, launchPointVelY, t, ArcPolicy.DESCENT_MARGIN);
+    }
+
+    private static void assertLandsOnTarget(
+            Translation3d target,
+            Translation3d launchPosition,
+            double robotHeadingRad,
+            double launchPointVelX,
+            double launchPointVelY,
+            AimTuning t,
+            ArcPolicy policy) {
 
         AimSolution solution = AimSolver.solve(
-            target, launchPosition, robotHeadingRad, launchPointVelX, launchPointVelY, t);
+            target, launchPosition, robotHeadingRad, launchPointVelX, launchPointVelY, t, policy);
         assertTrue(solution.feasible(), "solver reported an infeasible shot");
 
         Translation3d landing = simulateLanding(
@@ -206,6 +219,48 @@ class AimSolverTest {
         assertEquals(plain.rackAngleDeg() + 3.0, shifted.rackAngleDeg(), 1e-9);
         assertEquals(plain.turretAngleDeg() - 5.0, shifted.turretAngleDeg(), 1e-9);
         assertEquals(plain.launchSpeedMps(), shifted.launchSpeedMps(), 1e-9);
+    }
+
+    /** A shuttle pass: long, and aimed at the carpet rather than at a goal's height. */
+    private static final Translation3d FLOOR_TARGET = new Translation3d(14.0, 4.0, 0.0);
+
+    @Test
+    void shuttleShotPinsTheRackToItsHighStop() {
+        AimTuning t = tuning();
+        AimSolution solution = AimSolver.solve(
+            FLOOR_TARGET, LAUNCH, Math.toRadians(20), 0.0, 0.0, t, ArcPolicy.FLATTEST);
+
+        assertEquals(t.rackMaxAngleDeg(), solution.rackAngleDeg(), 1e-9,
+            "a stationary shuttle shot should sit exactly on the rack's high stop");
+        assertEquals(90.0 - t.rackMaxAngleDeg(), solution.launchAngleDeg(), 1e-9,
+            "launch angle should be the flattest the mechanism can produce");
+        assertTrue(!solution.rackClamped(),
+            "choosing the flattest arc is the request, not a clamp");
+    }
+
+    @Test
+    void shuttleShotIsFlatterThanTheSameShotWithDescentMargin() {
+        AimSolution arced = AimSolver.solve(FLOOR_TARGET, LAUNCH, 0.0, 0.0, 0.0, tuning());
+        AimSolution flat = AimSolver.solve(
+            FLOOR_TARGET, LAUNCH, 0.0, 0.0, 0.0, tuning(), ArcPolicy.FLATTEST);
+
+        assertTrue(flat.launchAngleDeg() < arced.launchAngleDeg(),
+            "the shuttle policy must not pick a steeper arc than the default one");
+        assertTrue(flat.launchSpeedMps() < arced.launchSpeedMps(),
+            "the flatter arc is the point: it should also ask less of the flywheel");
+    }
+
+    @Test
+    void shuttleShotLandsOnTheFloor() {
+        assertLandsOnTarget(
+            FLOOR_TARGET, LAUNCH, Math.toRadians(20), 0.0, 0.0, tuning(), ArcPolicy.FLATTEST);
+    }
+
+    @Test
+    void movingShuttleShotLandsOnTheFloor() {
+        assertLandsOnTarget(
+            FLOOR_TARGET, LAUNCH, Math.toRadians(20), 2.0, 0.5,
+            withFeeder(0.45, 0.15), ArcPolicy.FLATTEST);
     }
 
     @Test
