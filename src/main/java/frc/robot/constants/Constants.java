@@ -114,7 +114,7 @@ public final class Constants {
         public static final double ROTATOR_KD = 0.25;
         // Velocity feedforward for turret omega tracking (V·s/rot, motor units).
         // Start at 0 (disabled), increment by ~0.05 until turret tracks robot rotation smoothly.
-        public static final double ROTATOR_KV = 0.6;
+        public static final double ROTATOR_KV = 0.25;
         // Static friction feedforward, in volts, applied by Slot0 in whichever direction the closed
         // loop is driving — symmetric, unlike ROTATOR_KFF below. Tunable live as Tuning/Turret/kS.
         // Start at 0 and raise until the turret just begins to break away from a small error.
@@ -125,7 +125,7 @@ public final class Constants {
         // one fighting the chain. Positive assists CCW (increasing turret angle), negative assists
         // CW — so the sign picks the direction and the magnitude is the voltage.
         // Tunable live as Tuning/Turret/kFF. Start at 0 and raise until the lag closes.
-        public static final double ROTATOR_KFF = -0.1;
+        public static final double ROTATOR_KFF = -0.3;
         // Below this commanded turret rate the term is held off, so it does not creep the turret
         // while it is trying to sit still. Deg/s of turret travel.
         public static final double ROTATOR_KFF_DEADBAND_DEG_PER_SEC = 2;
@@ -244,7 +244,7 @@ public final class Constants {
             .getTagPose(10)
             .orElseThrow();
         public static final double RED_TARGET_X_METERS = TAG_10_POSE.getX() - 0.597;
-        public static final double RED_TARGET_Y_METERS = TAG_10_POSE.getY() - .1;
+        public static final double RED_TARGET_Y_METERS = TAG_10_POSE.getY() - 0;
         public static final double RED_TARGET_Z_METERS = TAG_10_POSE.getZ() + 0.45;
 
 
@@ -484,10 +484,10 @@ public final class Constants {
         // How long both conditions must hold before it counts as a jam. Mainly there so the
         // current spike during roller spin-up (high current, still slow) doesn't read as a stall.
         // Lower it for faster recovery, raise it if spin-up false-triggers an unjam.
-        public static final double ROLLER_STALL_DEBOUNCE_SECONDS = 0.25;
+        public static final double ROLLER_STALL_DEBOUNCE_SECONDS = 0.125;
 
         // How long to run in reverse before going back to intaking.
-        public static final double UNJAM_DURATION_SECONDS = 0.5;
+        public static final double UNJAM_DURATION_SECONDS = 0.125;
 
         // Full-speed reverse burst used by the automatic recovery — the mirror of the intake
         // speeds above, at 100% instead of ROLLER_JAM_SPEED's gentler manual 20%.
