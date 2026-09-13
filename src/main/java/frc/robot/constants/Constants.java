@@ -227,6 +227,32 @@ public final class Constants {
         // problem from a motion-compensation problem, then walk it back up.
         public static final double SHOOT_ON_THE_MOVE_GAIN = 1.0;
 
+        // (6) Tilt compensation. The turret yaws about the chassis's vertical axis and the rack
+        // elevates from the chassis's plane, so a robot with a wheel up on the depot or a corner on
+        // the bump is aiming in a frame that is tipped over relative to the field. The solver
+        // corrects for that by rotating its answer through the gyro's pitch and roll — see
+        // AimSolver. A degree of uncorrected tilt is roughly a degree of aiming error, which is
+        // about 9 cm of miss at 5 m.
+        //
+        // Authority, 0 to 1, exactly like SHOOT_ON_THE_MOVE_GAIN above: 1.0 fully compensates,
+        // 0.0 aims as if the robot were level. Set it to 0 to isolate a tilt-compensation problem
+        // from an aiming problem.
+        public static final double TILT_COMPENSATION_GAIN = 1.0;
+
+        // Mounting calibration for the gyro's pitch and roll, in degrees, subtracted from what it
+        // reports. A Pigeon bolted down a degree out of plane reads a degree of tilt on a robot
+        // that is sitting perfectly flat, and the compensation would dutifully aim a degree wrong
+        // all match — worse than not compensating at all. Park the robot on flat carpet, read
+        // Shooter/Tilt/RollDeg and Shooter/Tilt/PitchDeg, and put those numbers here.
+        public static final double TILT_ROLL_OFFSET_DEG  = 0.0;
+        public static final double TILT_PITCH_OFFSET_DEG = 0.0;
+
+        // Ceiling on how much tilt will be compensated for, in degrees, per axis. Well past
+        // anything the robot can drive over and stay upright, so it never limits a real shot — it
+        // is here so that a gyro fault reading a wild angle swings the turret by a bounded amount
+        // instead of sending it to the far stop.
+        public static final double TILT_MAX_COMPENSATED_DEG = 20.0;
+
         // Field-relative 3D position of the shooting target (AprilTag 26)
         private static final Pose3d TAG_26_POSE = VisionConstants.APRIL_TAG_FIELD_LAYOUT
             .getTagPose(26)

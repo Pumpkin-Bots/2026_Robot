@@ -29,6 +29,13 @@ import frc.robot.utils.AimSolver.AimTuning;
  *       park the turret at 0 deg to isolate the forward term, then at 90 deg for the rearward one.
  *   <li>Only now start driving, and tune {@code ShootOnTheMoveGain}. Set it to 0 first to confirm
  *       stationary aim is still good, then bring it to 1.
+ *   <li>{@code TiltRollOffsetDeg} / {@code TiltPitchOffsetDeg} — with the robot parked on flat
+ *       carpet, read {@code Shooter/Tilt/RollDeg} and {@code Shooter/Tilt/PitchDeg} and enter what
+ *       they say. They should be zero and generally won't be, and whatever they read on the flat is
+ *       error the tilt compensation would otherwise apply all match. Then drive one wheel up onto
+ *       the depot and confirm the two numbers move the way the robot physically did before
+ *       trusting a shot from there — {@code TiltCompensationGain} is the switch that takes the
+ *       whole correction back out if they don't.
  * </ol>
  */
 public class ShooterTuning {
@@ -48,6 +55,10 @@ public class ShooterTuning {
     private final TunableDouble m_launchForwardOffsetM;
     private final TunableDouble m_launchLeftOffsetM;
     private final TunableDouble m_launchHeightM;
+
+    private final TunableDouble m_tiltCompensationGain;
+    private final TunableDouble m_tiltRollOffsetDeg;
+    private final TunableDouble m_tiltPitchOffsetDeg;
 
     public ShooterTuning() {
         // maple-sim's projectiles fall under a flat 11 m/s^2 rather than 9.81, as its own stand-in
@@ -86,6 +97,13 @@ public class ShooterTuning {
             "Tuning/Shooter/LaunchLeftOffsetM", ShooterConstants.BALL_LAUNCH_LATERAL_OFFSET_METERS);
         m_launchHeightM = new TunableDouble(
             "Tuning/Shooter/LaunchHeightM", ShooterConstants.BALL_LAUNCH_HEIGHT_METERS);
+
+        m_tiltCompensationGain = new TunableDouble(
+            "Tuning/Shooter/TiltCompensationGain", ShooterConstants.TILT_COMPENSATION_GAIN);
+        m_tiltRollOffsetDeg = new TunableDouble(
+            "Tuning/Shooter/TiltRollOffsetDeg", ShooterConstants.TILT_ROLL_OFFSET_DEG);
+        m_tiltPitchOffsetDeg = new TunableDouble(
+            "Tuning/Shooter/TiltPitchOffsetDeg", ShooterConstants.TILT_PITCH_OFFSET_DEG);
     }
 
     /** Reads every dashboard value once, so a single solve can never see a half-changed set. */
@@ -120,5 +138,20 @@ public class ShooterTuning {
     /** Height of the ball's launch point above the floor, meters. */
     public double launchHeightMeters() {
         return m_launchHeightM.get();
+    }
+
+    /** Tilt-compensation authority, 0 to 1. 0 aims as if the robot were always level. */
+    public double tiltCompensationGain() {
+        return m_tiltCompensationGain.get();
+    }
+
+    /** Gyro roll reading on a robot known to be level, degrees. Subtracted before compensating. */
+    public double tiltRollOffsetDeg() {
+        return m_tiltRollOffsetDeg.get();
+    }
+
+    /** Gyro pitch reading on a robot known to be level, degrees. Subtracted before compensating. */
+    public double tiltPitchOffsetDeg() {
+        return m_tiltPitchOffsetDeg.get();
     }
 }

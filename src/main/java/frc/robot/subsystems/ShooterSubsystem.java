@@ -1,5 +1,6 @@
 package frc.robot.subsystems;
 
+import com.ctre.phoenix6.BaseStatusSignal;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.SoftwareLimitSwitchConfigs;
@@ -7,11 +8,14 @@ import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.StaticBrake;
 import com.ctre.phoenix6.controls.VelocityVoltage;
+import com.ctre.phoenix6.hardware.Pigeon2;
 import com.ctre.phoenix6.hardware.TalonFX;
 import com.ctre.phoenix6.sim.TalonFXSimState;
 
+import edu.wpi.first.math.MathUtil;
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.math.geometry.Rotation2d;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation2d;
 import edu.wpi.first.math.geometry.Translation3d;
 import edu.wpi.first.math.interpolation.InterpolatingDoubleTreeMap;
@@ -42,6 +46,9 @@ public class ShooterSubsystem implements Subsystem {
     private final TalonFX m_shooterFlywheelMotor;
     private final CommandSwerveDrivetrain m_drivetrain;
     private final VelocityEstimator m_velocityEstimator;
+    // Read for pitch and roll only. Yaw comes from the pose estimator instead, which is the same
+    // gyro yaw after vision has had its say about it.
+    private final Pigeon2 m_pigeon;
     private final ShooterTuning m_tuning = new ShooterTuning();
     private boolean m_turretZeroed = false;
     private double m_lastCommandedTurretAngle = 0.0;
@@ -237,6 +244,7 @@ public class ShooterSubsystem implements Subsystem {
     public ShooterSubsystem(CommandSwerveDrivetrain drivetrain, VelocityEstimator velocityEstimator) {
         m_drivetrain = drivetrain;
         m_velocityEstimator = velocityEstimator;
+        m_pigeon = drivetrain.getPigeon2();
 
         m_turretRotatorMotor = new TalonFX(Constants.ShooterConstants.TURRET_ROTATOR_ID);
         m_shooterRackMotor = new TalonFX(Constants.ShooterConstants.SHOOTER_RACK_ID);
@@ -261,6 +269,14 @@ public class ShooterSubsystem implements Subsystem {
         m_shooterFlywheelMotor.getVelocity().setUpdateFrequency(50);
         m_shooterFlywheelMotor.optimizeBusUtilization();
 
+        // Tilt compensation reads the Pigeon through getRotation3d(), which is fed by the four
+        // quaternion signals — not the yaw signal the drivetrain already asks for. Request them
+        // explicitly at the loop rate: it keeps the tilt reading fresh, and it means a future
+        // optimizeBusUtilization() on the drivetrain, which silences everything unrequested, cannot
+        // quietly turn tilt compensation into a no-op that still looks like it is running.
+        BaseStatusSignal.setUpdateFrequencyForAll(50,
+            m_pigeon.getQuatW(), m_pigeon.getQuatX(), m_pigeon.getQuatY(), m_pigeon.getQuatZ());
+
         if (RobotBase.isSimulation()) {
             m_flywheelSim = new FlywheelSim(
                 LinearSystemId.createFlywheelSystem(
@@ -273,17 +289,69 @@ public class ShooterSubsystem implements Subsystem {
     }
 
     /**
-     * Computes the ball's launch position in field coordinates,
-     * accounting for the robot's heading and the forward/lateral/height offset from center.
+     * The robot's full orientation relative to the field: heading from the pose estimator, pitch and
+     * roll from the gyro.
+     *
+     * <p>The pitch and roll are the whole point — they are what let {@link AimSolver} work out where
+     * the turret and rack have to point on a robot that is not sitting flat. Three things happen to
+     * them on the way out, all of them guarding against a correction that is worse than no
+     * correction:
+     *
+     * <ul>
+     *   <li>The mounting offsets come off first, so a Pigeon bolted down slightly out of plane does
+     *       not spend the match aiming the shot at an imaginary tilt.
+     *   <li>The result is clamped, so a gyro fault moves the turret by a bounded amount.
+     *   <li>The tuning gain scales it, so the whole correction can be taken back out from the
+     *       dashboard without a redeploy if it turns out to be aiming the wrong way.
+     * </ul>
+     *
+     * <p>Read through {@code getRotation3d()} rather than {@code getPitch()}/{@code getRoll()}
+     * because that is the reading already expressed in WPILib's axis convention, which is the one
+     * the solver's rotation needs. In simulation it reports level, which is also true — maple-sim's
+     * field is flat — so the whole correction quietly becomes the identity there.
      */
-    private Translation3d calculateLaunchPosition(Pose2d robotPose) {
-        double heading = robotPose.getRotation().getRadians();
-        double rx = m_tuning.launchForwardOffsetMeters();
-        double ry = m_tuning.launchLeftOffsetMeters();
+    private Rotation3d robotOrientation(Pose2d robotPose) {
+        Rotation3d gyro = m_pigeon.getRotation3d();
+        double gain = m_tuning.tiltCompensationGain();
+        double rollDeg = compensatedTiltDeg(
+            Math.toDegrees(gyro.getX()), m_tuning.tiltRollOffsetDeg(), gain);
+        double pitchDeg = compensatedTiltDeg(
+            Math.toDegrees(gyro.getY()), m_tuning.tiltPitchOffsetDeg(), gain);
+        return new Rotation3d(
+            Math.toRadians(rollDeg),
+            Math.toRadians(pitchDeg),
+            robotPose.getRotation().getRadians());
+    }
+
+    /** One tilt axis: calibration offset removed, authority applied, and bounded. */
+    private static double compensatedTiltDeg(double measuredDeg, double offsetDeg, double gain) {
+        if (!Double.isFinite(measuredDeg)) {
+            return 0.0;
+        }
+        return MathUtil.clamp(
+            (measuredDeg - offsetDeg) * gain,
+            -Constants.ShooterConstants.TILT_MAX_COMPENSATED_DEG,
+            Constants.ShooterConstants.TILT_MAX_COMPENSATED_DEG);
+    }
+
+    /**
+     * Computes the ball's launch position in field coordinates, accounting for the robot's
+     * orientation and the forward/lateral/height offset from center.
+     *
+     * <p>Tilt moves the launch point as well as turning the barrel: the shooter sits about half a
+     * meter up, so that offset swings through an arc as the chassis tips, carrying the muzzle
+     * several centimeters sideways and slightly down. Rotating the whole offset — height included —
+     * by the robot's orientation is the same arithmetic as before once the robot is level.
+     */
+    private Translation3d calculateLaunchPosition(Pose2d robotPose, Rotation3d orientation) {
+        Translation3d offset = new Translation3d(
+            m_tuning.launchForwardOffsetMeters(),
+            m_tuning.launchLeftOffsetMeters(),
+            m_tuning.launchHeightMeters()).rotateBy(orientation);
         return new Translation3d(
-            robotPose.getX() + rx * Math.cos(heading) - ry * Math.sin(heading),
-            robotPose.getY() + rx * Math.sin(heading) + ry * Math.cos(heading),
-            m_tuning.launchHeightMeters());
+            robotPose.getX() + offset.getX(),
+            robotPose.getY() + offset.getY(),
+            offset.getZ());
     }
 
     /**
@@ -294,7 +362,8 @@ public class ShooterSubsystem implements Subsystem {
      * and what matters is where the ball comes out.
      */
     public Translation3d getLaunchPosition() {
-        return calculateLaunchPosition(m_drivetrain.getState().Pose);
+        Pose2d robotPose = m_drivetrain.getState().Pose;
+        return calculateLaunchPosition(robotPose, robotOrientation(robotPose));
     }
 
     /**
@@ -381,7 +450,11 @@ public class ShooterSubsystem implements Subsystem {
      */
     public void calculateShooterActions(Translation3d targetPosition) {
         Pose2d robotPose = m_drivetrain.getState().Pose;
-        Translation3d launchPosition = calculateLaunchPosition(robotPose);
+        // Not tilt-compensated: the tables are indexed on distance alone and have no way to express
+        // a rack angle measured from a tipped-over chassis. The physics path below is the one that
+        // handles a robot on the depot; this one aims as if the floor were flat.
+        Translation3d launchPosition = calculateLaunchPosition(robotPose, new Rotation3d(
+            0.0, 0.0, robotPose.getRotation().getRadians()));
         Translation2d launchPointVel = calculateLaunchPointVelocity(robotPose);
 
         double distance = getDistanceToTarget(targetPosition, launchPosition);
@@ -437,13 +510,14 @@ public class ShooterSubsystem implements Subsystem {
      */
     public AimSolution solveAim(Translation3d targetPosition, ArcPolicy policy) {
         Pose2d robotPose = m_drivetrain.getState().Pose;
-        Translation3d launchPosition = calculateLaunchPosition(robotPose);
+        Rotation3d orientation = robotOrientation(robotPose);
+        Translation3d launchPosition = calculateLaunchPosition(robotPose, orientation);
         Translation2d launchPointVel = calculateLaunchPointVelocity(robotPose);
 
         return AimSolver.solve(
             targetPosition,
             launchPosition,
-            robotPose.getRotation().getRadians(),
+            orientation,
             launchPointVel.getX(),
             launchPointVel.getY(),
             m_tuning.snapshot(),
@@ -569,11 +643,16 @@ public class ShooterSubsystem implements Subsystem {
      * Rotates the turret to face a field-relative 3D target.
      * Does not command the rack or flywheel.
      *
+     * <p>Bearing only, and deliberately not tilt-compensated: nothing is being fired here. This is
+     * the turret keeping itself roughly pre-aimed while in storage so that leaving a trench does not
+     * cost a turret swing before the first shot, and the shot itself is solved properly by
+     * {@link #solveAim} the moment one is actually taken.
+     *
      * @param targetPosition field-relative 3D position of the target
      */
     public void aimTurretAt(Translation3d targetPosition) {
         Pose2d robotPose = m_drivetrain.getState().Pose;
-        Translation3d launchPosition = calculateLaunchPosition(robotPose);
+        Translation3d launchPosition = getLaunchPosition();
         double dx = targetPosition.getX() - launchPosition.getX();
         double dy = targetPosition.getY() - launchPosition.getY();
         double turretAngleDeg = Math.toDegrees(Math.atan2(dy, dx))
@@ -772,8 +851,42 @@ public class ShooterSubsystem implements Subsystem {
         });
     }
 
+    /**
+     * Publishes what the gyro says about how level the robot is.
+     *
+     * <p>Raw, before the offsets and the gain, because these rows are what the offsets get read off
+     * in the first place — park on flat carpet and whatever they say is the mounting error. They are
+     * published every loop rather than only while shooting, including while disabled, so that
+     * calibration doesn't require holding a button.
+     *
+     * <p>{@code AppliedRollDeg}/{@code AppliedPitchDeg} are the same two numbers after all of that,
+     * i.e. the tilt the aim is actually being corrected for. Equal pairs mean the calibration is
+     * doing nothing; a large disagreement means it is doing a lot, and is worth understanding before
+     * trusting a shot.
+     */
+    private void publishTiltTelemetry() {
+        Rotation3d gyro = m_pigeon.getRotation3d();
+        double rollDeg = Math.toDegrees(gyro.getX());
+        double pitchDeg = Math.toDegrees(gyro.getY());
+        double gain = m_tuning.tiltCompensationGain();
+        double appliedRoll = compensatedTiltDeg(rollDeg, m_tuning.tiltRollOffsetDeg(), gain);
+        double appliedPitch = compensatedTiltDeg(pitchDeg, m_tuning.tiltPitchOffsetDeg(), gain);
+
+        SmartDashboard.putNumber("Shooter/Tilt/RollDeg", rollDeg);
+        SmartDashboard.putNumber("Shooter/Tilt/PitchDeg", pitchDeg);
+        SmartDashboard.putNumber("Shooter/Tilt/AppliedRollDeg", appliedRoll);
+        SmartDashboard.putNumber("Shooter/Tilt/AppliedPitchDeg", appliedPitch);
+        // Total angle between the chassis's up axis and the field's, which is the single number that
+        // says how far from flat the robot is regardless of which way it is facing.
+        SmartDashboard.putNumber("Shooter/Tilt/TotalDeg", Math.toDegrees(Math.acos(MathUtil.clamp(
+            Math.cos(Math.toRadians(appliedRoll)) * Math.cos(Math.toRadians(appliedPitch)),
+            -1.0, 1.0))));
+    }
+
     @Override
     public void periodic() {
+        publishTiltTelemetry();
+
         // Re-applies on any change, which includes tuning mode being switched off — the gains snap
         // back to the compiled constants the same way every other tunable does.
         double kP = m_turretKP.get();

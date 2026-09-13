@@ -1,6 +1,7 @@
 package frc.robot.utils;
 
 import edu.wpi.first.math.MathUtil;
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation3d;
 
 /**
@@ -19,6 +20,11 @@ import edu.wpi.first.math.geometry.Translation3d;
  *       way up. Clamp it to what the rack can physically reach.
  *   <li>Solve the no-drag range equation for the launch speed that hits the target at that angle.
  *   <li>Express that stationary solution as a field-relative 3D velocity vector.
+ *   <li>Rotate that vector out of the field frame and into the robot's own axes, by the inverse of
+ *       the robot's full 3D orientation. This is what makes the shot tilt-compensated: the turret
+ *       spins about the <em>chassis's</em> vertical axis and the rack elevates from the
+ *       <em>chassis's</em> plane, so with a wheel up on the depot or a corner on the bump, both of
+ *       those axes are tipped over with respect to the field.
  *   <li>Subtract every velocity the ball is going to receive for free — the launch point's motion
  *       across the field, and the feeder's shove — from that vector. Whatever remains is what the
  *       shooter itself must impart. Because the corrections are subtractions on the same vector,
@@ -27,10 +33,12 @@ import edu.wpi.first.math.geometry.Translation3d;
  *       apply the mechanical calibration offsets.
  * </ol>
  *
- * <p>Step 4 is worth dwelling on: it is exact, not an approximation. The ball's field-relative
- * velocity ends up identical to the stationary solution, so it flies the identical trajectory and
- * lands in the identical place. There is no iteration on flight time and no virtual target,
- * because none is needed.
+ * <p>Steps 4 and 5 are worth dwelling on: they are exact, not approximations. The rotation is a
+ * rigid one, so it changes neither the speed asked of the flywheel nor the trajectory the ball
+ * flies — it only re-expresses the same vector in the frame the mechanism's two joints actually
+ * measure their angles in. And because the ball's field-relative velocity ends up identical to the
+ * stationary, level solution, it lands in the identical place. There is no iteration on flight time
+ * and no virtual target, because none is needed.
  */
 public final class AimSolver {
 
@@ -124,7 +132,10 @@ public final class AimSolver {
      * @param rackAngleDeg    rack command in degrees, calibration offset already applied
      * @param flywheelRps     flywheel motor command in rotations per second
      * @param launchSpeedMps  speed the shooter must impart, relative to the moving robot
-     * @param launchAngleDeg  elevation above horizontal the shooter must fire at
+     * @param launchAngleDeg  elevation the shooter must fire at, measured from the chassis plane
+     *                        rather than from level — this is the angle the rack is commanded to,
+     *                        so on a tilted robot it deliberately differs from the elevation above
+     *                        horizontal the ball actually leaves at
      * @param horizontalDistM ground distance from launch point to target
      * @param flightTimeS     predicted time of flight, from the no-drag solution
      * @param rackClamped     the physics wanted a rack angle outside the mechanism's range
@@ -155,10 +166,26 @@ public final class AimSolver {
      *
      * @param target           field-relative position of the target
      * @param launchPosition   field-relative position the ball leaves from
-     * @param robotHeadingRad  robot heading, field-relative, in radians
+     * @param robotOrientation robot orientation relative to the field — yaw, pitch, and roll
      * @param launchPointVelX  field-relative X velocity of the launch point (not the robot center)
      * @param launchPointVelY  field-relative Y velocity of the launch point
      * @param t                calibration snapshot
+     */
+    public static AimSolution solve(
+            Translation3d target,
+            Translation3d launchPosition,
+            Rotation3d robotOrientation,
+            double launchPointVelX,
+            double launchPointVelY,
+            AimTuning t) {
+        return solve(target, launchPosition, robotOrientation,
+            launchPointVelX, launchPointVelY, t, ArcPolicy.DESCENT_MARGIN);
+    }
+
+    /**
+     * Solves for a robot known to be sitting level, where orientation is heading and nothing else.
+     *
+     * @param robotHeadingRad robot heading, field-relative, in radians
      */
     public static AimSolution solve(
             Translation3d target,
@@ -167,8 +194,25 @@ public final class AimSolver {
             double launchPointVelX,
             double launchPointVelY,
             AimTuning t) {
-        return solve(target, launchPosition, robotHeadingRad,
+        return solve(target, launchPosition, new Rotation3d(0.0, 0.0, robotHeadingRad),
             launchPointVelX, launchPointVelY, t, ArcPolicy.DESCENT_MARGIN);
+    }
+
+    /**
+     * Solves for a robot known to be sitting level, where orientation is heading and nothing else.
+     *
+     * @param robotHeadingRad robot heading, field-relative, in radians
+     */
+    public static AimSolution solve(
+            Translation3d target,
+            Translation3d launchPosition,
+            double robotHeadingRad,
+            double launchPointVelX,
+            double launchPointVelY,
+            AimTuning t,
+            ArcPolicy policy) {
+        return solve(target, launchPosition, new Rotation3d(0.0, 0.0, robotHeadingRad),
+            launchPointVelX, launchPointVelY, t, policy);
     }
 
     /**
@@ -176,7 +220,10 @@ public final class AimSolver {
      *
      * @param target           field-relative position of the target
      * @param launchPosition   field-relative position the ball leaves from
-     * @param robotHeadingRad  robot heading, field-relative, in radians
+     * @param robotOrientation robot orientation relative to the field. Yaw does what it always did.
+     *                         Pitch and roll are what make the shot tilt-compensated: pass the
+     *                         gyro's, and a robot with one wheel up on the depot aims as accurately
+     *                         as one sitting flat. Pass zero for both to aim as if level.
      * @param launchPointVelX  field-relative X velocity of the launch point (not the robot center)
      * @param launchPointVelY  field-relative Y velocity of the launch point
      * @param t                calibration snapshot
@@ -185,7 +232,7 @@ public final class AimSolver {
     public static AimSolution solve(
             Translation3d target,
             Translation3d launchPosition,
-            double robotHeadingRad,
+            Rotation3d robotOrientation,
             double launchPointVelX,
             double launchPointVelY,
             AimTuning t,
@@ -253,35 +300,49 @@ public final class AimSolver {
         ballVelX -= launchPointVelX * t.shootOnTheMoveGain();
         ballVelY -= launchPointVelY * t.shootOnTheMoveGain();
 
-        // Feeder push, subtracted the same way. Its direction is fixed to the chassis but its
-        // magnitude depends on where the turret is pointing, so this has to iterate: the turret
-        // angle is what we are solving for. It converges immediately — the push is well under
-        // 1 m/s against a launch speed around 15 m/s, so the turret angle it produces barely moves
-        // the push on the next pass.
-        double cosH = Math.cos(robotHeadingRad);
-        double sinH = Math.sin(robotHeadingRad);
-        double baseVelX = ballVelX;
-        double baseVelY = ballVelY;
-        double turretAngleRad = Math.atan2(baseVelY, baseVelX) - robotHeadingRad;
+        // Everything above this line is field-relative. The mechanism is not: the turret's yaw is
+        // measured about the chassis's own vertical axis and the rack's elevation from the
+        // chassis's own plane, and on a robot with a wheel up on the depot neither of those agrees
+        // with the field's. Rotating the vector by the inverse of the robot's orientation
+        // re-expresses it in exactly the frame those two joints work in, which is what makes the
+        // decomposition below correct on a tilt rather than merely correct when flat.
+        //
+        // A rotation changes no lengths, so the flywheel speed this produces is the same one a
+        // level robot would be asked for — tilt moves where the barrel has to point, not how hard
+        // it has to throw. On a level robot the rotation is a pure yaw and this reduces exactly to
+        // the heading subtraction it replaces.
+        Translation3d robotFrameVel =
+            new Translation3d(ballVelX, ballVelY, ballVelZ).rotateBy(robotOrientation.unaryMinus());
+        double baseVelX = robotFrameVel.getX();
+        double baseVelY = robotFrameVel.getY();
+        double baseVelZ = robotFrameVel.getZ();
+
+        // Feeder push, subtracted the same way — and in this frame it is a single axis, because the
+        // push is bolted to the chassis and so points straight down the robot's +X whatever the
+        // robot is sitting on. Its magnitude depends on where the turret is pointing, so this has to
+        // iterate: the turret angle is what we are solving for. It converges immediately — the push
+        // is well under 1 m/s against a launch speed around 15 m/s, so the turret angle it produces
+        // barely moves the push on the next pass.
+        double outVelX = baseVelX;
+        double turretAngleRad = Math.atan2(baseVelY, baseVelX);
         for (int i = 0; i < FEEDER_SOLVE_ITERATIONS; i++) {
-            double push = feederPushForwardMps(turretAngleRad, t);
-            ballVelX = baseVelX - push * cosH;
-            ballVelY = baseVelY - push * sinH;
-            turretAngleRad = Math.atan2(ballVelY, ballVelX) - robotHeadingRad;
+            outVelX = baseVelX - feederPushForwardMps(turretAngleRad, t);
+            turretAngleRad = Math.atan2(baseVelY, outVelX);
         }
 
-        double outHorizontal = Math.hypot(ballVelX, ballVelY);
-        double outSpeed = Math.hypot(outHorizontal, ballVelZ);
-        double outElevationRad = Math.atan2(ballVelZ, outHorizontal);
-        double outBearingRad = Math.atan2(ballVelY, ballVelX);
+        double outHorizontal = Math.hypot(outVelX, baseVelY);
+        double outSpeed = Math.hypot(outHorizontal, baseVelZ);
+        double outElevationRad = Math.atan2(baseVelZ, outHorizontal);
 
-        double turretAngleDeg =
-            Math.toDegrees(outBearingRad) - Math.toDegrees(robotHeadingRad) + t.turretOffsetDeg();
+        // Already robot-relative — the rotation above took the heading out, so unlike the field-frame
+        // bearing this replaces, there is nothing left to subtract.
+        double turretAngleDeg = Math.toDegrees(turretAngleRad) + t.turretOffsetDeg();
         double rackAngleDeg = 90.0 - Math.toDegrees(outElevationRad) + t.rackOffsetDeg();
-        // The motion corrections tilt the commanded elevation away from the angle solved for above,
-        // so a command that started inside the rack's travel can finish outside it — most obviously
-        // when the arc is already pinned flat and the robot is driving away from the target. The
-        // mechanism will clamp that silently; say so instead.
+        // The motion corrections and the tilt rotation both swing the commanded elevation away from
+        // the angle solved for above, so a command that started inside the rack's travel can finish
+        // outside it — most obviously when the arc is already pinned flat and the robot is driving
+        // away from the target, or when the robot is nose-down on a bump and the rack runs out of
+        // travel making up the difference. The mechanism will clamp that silently; say so instead.
         if (rackAngleDeg < t.rackMinAngleDeg() - 1e-9 || rackAngleDeg > t.rackMaxAngleDeg() + 1e-9) {
             rackClamped = true;
         }

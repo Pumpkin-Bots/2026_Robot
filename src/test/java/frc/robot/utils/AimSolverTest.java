@@ -3,6 +3,7 @@ package frc.robot.utils;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import edu.wpi.first.math.geometry.Rotation3d;
 import edu.wpi.first.math.geometry.Translation3d;
 import frc.robot.utils.AimSolver.AimSolution;
 import frc.robot.utils.AimSolver.AimTuning;
@@ -60,11 +61,17 @@ class AimSolverTest {
      * <p>Undoes the command offsets to recover the physical launch velocity, adds back the two
      * velocities the solver expected the ball to receive for free, then integrates ballistically to
      * the target's height on the way down.
+     *
+     * <p>The reconstruction is deliberately done the way the mechanism does it — build the velocity
+     * in the robot's own axes from the two joint angles, then carry it into the field frame by the
+     * robot's orientation. That is what makes these tests able to catch a tilt-compensation error:
+     * a solver that got the rotation backwards produces joint angles that fly the ball somewhere
+     * else entirely once they are interpreted on a robot that is actually tipped over.
      */
     private static Translation3d simulateLanding(
             AimSolution solution,
             Translation3d launchPosition,
-            double robotHeadingRad,
+            Rotation3d robotOrientation,
             double launchPointVelX,
             double launchPointVelY,
             double targetZ,
@@ -73,25 +80,29 @@ class AimSolverTest {
         double speed = (solution.flywheelRps() - t.flywheelRpsOffset())
             * Math.PI * t.flywheelDiameterMeters();
         double elevationRad = Math.toRadians(90.0 - (solution.rackAngleDeg() - t.rackOffsetDeg()));
-        double bearingRad = robotHeadingRad
-            + Math.toRadians(solution.turretAngleDeg() - t.turretOffsetDeg());
+        double turretAngleRad = Math.toRadians(solution.turretAngleDeg() - t.turretOffsetDeg());
 
-        double vx = speed * Math.cos(elevationRad) * Math.cos(bearingRad);
-        double vy = speed * Math.cos(elevationRad) * Math.sin(bearingRad);
-        double vz = speed * Math.sin(elevationRad);
-
-        // The launch point carries the ball with it, and the feeder shoves it — both are velocity
-        // the shooter deliberately did not supply, so add them back to get the ball's true velocity.
-        vx += launchPointVelX * t.shootOnTheMoveGain();
-        vy += launchPointVelY * t.shootOnTheMoveGain();
+        // Barrel direction in the robot's own axes: the turret's yaw about the chassis vertical,
+        // the rack's elevation from the chassis plane.
+        Translation3d robotFrameVel = new Translation3d(
+            speed * Math.cos(elevationRad) * Math.cos(turretAngleRad),
+            speed * Math.cos(elevationRad) * Math.sin(turretAngleRad),
+            speed * Math.sin(elevationRad));
 
         // The feeder's push follows the turret angle the shot actually goes out at, which is what
         // the solver had to converge on — so this also checks that convergence landed somewhere
-        // self-consistent, not just that the arithmetic ran.
-        double turretAngleRad = Math.toRadians(solution.turretAngleDeg() - t.turretOffsetDeg());
-        double push = AimSolver.feederPushForwardMps(turretAngleRad, t);
-        vx += push * Math.cos(robotHeadingRad);
-        vy += push * Math.sin(robotHeadingRad);
+        // self-consistent, not just that the arithmetic ran. It acts along the chassis's forward
+        // axis, so it belongs here, before the vector leaves the robot frame.
+        robotFrameVel = robotFrameVel.plus(
+            new Translation3d(AimSolver.feederPushForwardMps(turretAngleRad, t), 0.0, 0.0));
+
+        Translation3d fieldVel = robotFrameVel.rotateBy(robotOrientation);
+
+        // The launch point carries the ball with it — velocity the shooter deliberately did not
+        // supply, so add it back to get the ball's true velocity.
+        double vx = fieldVel.getX() + launchPointVelX * t.shootOnTheMoveGain();
+        double vy = fieldVel.getY() + launchPointVelY * t.shootOnTheMoveGain();
+        double vz = fieldVel.getZ();
 
         // Descending root of  launchZ + vz*t - g*t^2/2 = targetZ
         double dz = targetZ - launchPosition.getZ();
@@ -112,7 +123,7 @@ class AimSolverTest {
             double launchPointVelX,
             double launchPointVelY,
             AimTuning t) {
-        assertLandsOnTarget(target, launchPosition, robotHeadingRad,
+        assertLandsOnTarget(target, launchPosition, level(robotHeadingRad),
             launchPointVelX, launchPointVelY, t, ArcPolicy.DESCENT_MARGIN);
     }
 
@@ -124,17 +135,44 @@ class AimSolverTest {
             double launchPointVelY,
             AimTuning t,
             ArcPolicy policy) {
+        assertLandsOnTarget(target, launchPosition, level(robotHeadingRad),
+            launchPointVelX, launchPointVelY, t, policy);
+    }
+
+    private static void assertLandsOnTarget(
+            Translation3d target,
+            Translation3d launchPosition,
+            Rotation3d robotOrientation,
+            double launchPointVelX,
+            double launchPointVelY,
+            AimTuning t,
+            ArcPolicy policy) {
 
         AimSolution solution = AimSolver.solve(
-            target, launchPosition, robotHeadingRad, launchPointVelX, launchPointVelY, t, policy);
+            target, launchPosition, robotOrientation, launchPointVelX, launchPointVelY, t, policy);
         assertTrue(solution.feasible(), "solver reported an infeasible shot");
 
         Translation3d landing = simulateLanding(
-            solution, launchPosition, robotHeadingRad,
+            solution, launchPosition, robotOrientation,
             launchPointVelX, launchPointVelY, target.getZ(), t);
 
         assertEquals(target.getX(), landing.getX(), TOLERANCE_METERS, "landing X");
         assertEquals(target.getY(), landing.getY(), TOLERANCE_METERS, "landing Y");
+    }
+
+    /** A robot sitting flat, facing the given heading. */
+    private static Rotation3d level(double headingRad) {
+        return new Rotation3d(0.0, 0.0, headingRad);
+    }
+
+    /**
+     * A robot with a wheel up on something. Positive roll is the left side lifted; positive pitch is
+     * the nose down, which is WPILib's right-hand-rule convention and not always the one a gyro's
+     * own datasheet uses.
+     */
+    private static Rotation3d tilted(double rollDeg, double pitchDeg, double headingRad) {
+        return new Rotation3d(
+            Math.toRadians(rollDeg), Math.toRadians(pitchDeg), headingRad);
     }
 
     private static final Translation3d TARGET = new Translation3d(8.0, 4.0, 2.2);
@@ -261,6 +299,85 @@ class AimSolverTest {
         assertLandsOnTarget(
             FLOOR_TARGET, LAUNCH, Math.toRadians(20), 2.0, 0.5,
             withFeeder(0.45, 0.15), ArcPolicy.FLATTEST);
+    }
+
+    /**
+     * Far enough out that the descent-margin arc sits comfortably inside the rack's travel, so a
+     * tilt has room to move the commanded rack angle without running into a stop. The close-range
+     * TARGET above is already pinned against the rack's steep limit, which would mask the effect.
+     */
+    private static final Translation3d FAR_TARGET = new Translation3d(12.0, 3.0, 2.2);
+
+    @Test
+    void shotFromATiltedRobotHitsTarget() {
+        // One wheel up on the depot: tipped over on both axes at once.
+        assertLandsOnTarget(FAR_TARGET, LAUNCH, tilted(7.0, -4.0, Math.toRadians(35)),
+            0.0, 0.0, tuning(), ArcPolicy.DESCENT_MARGIN);
+    }
+
+    @Test
+    void shotFromATiltedRobotHitsTargetWithEveryOtherCorrectionRunning() {
+        // Tilt, translation, and feeder push together — the corrections are applied to one shared
+        // vector, so the thing worth checking is that they still compose.
+        assertLandsOnTarget(FAR_TARGET, LAUNCH, tilted(-6.0, 5.0, Math.toRadians(-120)),
+            2.5, -1.5, withFeeder(0.45, 0.15), ArcPolicy.DESCENT_MARGIN);
+    }
+
+    @Test
+    void tiltedShuttlePassStillLandsWhereItWasAimed() {
+        assertLandsOnTarget(FLOOR_TARGET, LAUNCH, tilted(5.0, 6.0, Math.toRadians(20)),
+            1.0, 0.0, withFeeder(0.45, 0.15), ArcPolicy.FLATTEST);
+    }
+
+    @Test
+    void noseDownPitchIsMadeUpForOneForOneByTheRack() {
+        // Target dead ahead of a robot facing +X, so the shot is entirely in the pitch plane and the
+        // arithmetic is exact: pitching the chassis nose-down by 10 degrees means the rack has to
+        // elevate 10 degrees further to fire along the same line, and the rack's angle is measured
+        // from vertical, so its command drops by exactly that.
+        AimSolution levelShot = AimSolver.solve(FAR_TARGET, LAUNCH, level(0.0), 0.0, 0.0, tuning());
+        AimSolution pitchedShot =
+            AimSolver.solve(FAR_TARGET, LAUNCH, tilted(0.0, 10.0, 0.0), 0.0, 0.0, tuning());
+
+        assertEquals(levelShot.rackAngleDeg() - 10.0, pitchedShot.rackAngleDeg(), 1e-9);
+        assertEquals(0.0, pitchedShot.turretAngleDeg(), 1e-9,
+            "a pure pitch with the target dead ahead should not move the turret");
+        assertTrue(!pitchedShot.rackClamped(),
+            "test geometry is wrong if the rack is against a stop — the effect would be hidden");
+    }
+
+    @Test
+    void tiltChangesWhereToPointButNotHowHardToThrow() {
+        // The compensation is a rotation, and a rotation preserves length. If a tilted robot is
+        // being asked for a different flywheel speed than a level one in the same place, something
+        // is scaling the vector that should not be.
+        // Heading zero so the shot runs down the robot's own +X axis, where the roll and the pitch
+        // each move one joint cleanly. At other headings they can partly cancel along the firing
+        // line, which makes for a weaker assertion than it looks like.
+        AimSolution levelShot =
+            AimSolver.solve(FAR_TARGET, LAUNCH, level(0.0), 0.0, 0.0, tuning());
+        AimSolution tiltedShot = AimSolver.solve(
+            FAR_TARGET, LAUNCH, tilted(7.0, -4.0, 0.0), 0.0, 0.0, tuning());
+
+        assertEquals(levelShot.launchSpeedMps(), tiltedShot.launchSpeedMps(), 1e-9);
+        assertEquals(levelShot.flywheelRps(), tiltedShot.flywheelRps(), 1e-9);
+        assertTrue(Math.abs(levelShot.rackAngleDeg() - tiltedShot.rackAngleDeg()) > 1.0,
+            "the tilt should have moved the rack command");
+        assertTrue(Math.abs(levelShot.turretAngleDeg() - tiltedShot.turretAngleDeg()) > 0.1,
+            "a roll should have moved the turret command too");
+    }
+
+    @Test
+    void zeroTiltSolvesIdenticallyToTheLevelOverload() {
+        // The heading-only entry point is what the lookup-table path and every existing caller use.
+        // It must stay bit-for-bit the same solve, or this change silently retunes the whole robot.
+        AimSolution viaHeading = AimSolver.solve(TARGET, LAUNCH, 0.7, 2.0, -1.0, withFeeder(0.45, 0.15));
+        AimSolution viaOrientation =
+            AimSolver.solve(TARGET, LAUNCH, level(0.7), 2.0, -1.0, withFeeder(0.45, 0.15));
+
+        assertEquals(viaHeading.turretAngleDeg(), viaOrientation.turretAngleDeg(), 1e-12);
+        assertEquals(viaHeading.rackAngleDeg(), viaOrientation.rackAngleDeg(), 1e-12);
+        assertEquals(viaHeading.flywheelRps(), viaOrientation.flywheelRps(), 1e-12);
     }
 
     @Test
