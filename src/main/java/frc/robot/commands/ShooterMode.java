@@ -56,6 +56,27 @@ public class ShooterMode extends Command {
     public static final DashboardToggle ZONE_STORAGE_ENABLED =
         new DashboardToggle("Shooter/TrenchTowerStorageEnabled", true);
 
+    /**
+     * Operator switch, default OFF, for holding the feeder until the flywheel has actually reached
+     * the speed it is being held to.
+     *
+     * <p>Off — the shipped behaviour — the feeder runs continuously and balls go through the wheel
+     * whenever they arrive, including while it is still recovering from the last one. That trades
+     * accuracy for rate, and the droop compensator exists to buy most of that accuracy back by
+     * biasing the commanded speed up (see {@link frc.robot.utils.FlywheelDroopCompensator}).
+     *
+     * <p>On, the feeder waits for {@code ShooterSubsystem.isFlywheelReady()} before each ball. Every
+     * shot then leaves at the right speed, and the fire rate becomes whatever the flywheel's
+     * recovery time allows — watch {@code Shooter/Flywheel/LastRecoverySec} to know what that costs.
+     * Worth switching on when a specific shot has to land, and worth switching off again when the
+     * hopper needs emptying before the buzzer.
+     *
+     * <p>Static for the same reason as the toggle above: a fresh ShooterMode is built per button
+     * press, and a per-instance NetworkTables handle would leak one each time.
+     */
+    public static final DashboardToggle HOLD_FEED_UNTIL_AT_SPEED =
+        new DashboardToggle("Shooter/HoldFeedUntilAtSpeed", false);
+
     private final GroundIntakeSubsystem m_GroundIntake;
     private final TurretSubsystem m_Turret;
     private final ShooterSubsystem m_Shooter;
@@ -173,9 +194,17 @@ public class ShooterMode extends Command {
             // then goes back to intaking. The flywheel is commanded above either way, so it holds
             // its speed straight through the unjam.
             boolean unjamming = m_GroundIntake.runIntakeWithAutoUnjam();
-            m_Turret.setTurretIndexerSpeed(unjamming
-                ? -Constants.TurretConstants.TURRET_INDEXER_SPEED
-                : Constants.TurretConstants.TURRET_INDEXER_SPEED);
+
+            // The intake keeps running regardless — only the feeder into the wheel is held. Fuel
+            // collected while waiting stacks up in the throat and goes through the moment the
+            // flywheel is back, so nothing is lost by waiting except the time itself.
+            boolean holdFeed = HOLD_FEED_UNTIL_AT_SPEED.get() && !m_Shooter.isFlywheelReady();
+            SmartDashboard.putBoolean("Shooter/FeedHeld", holdFeed);
+
+            m_Turret.setTurretIndexerSpeed(
+                holdFeed ? 0.0
+                    : unjamming ? -Constants.TurretConstants.TURRET_INDEXER_SPEED
+                    : Constants.TurretConstants.TURRET_INDEXER_SPEED);
         }
     }
 

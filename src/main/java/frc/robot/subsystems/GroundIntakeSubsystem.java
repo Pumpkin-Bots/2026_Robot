@@ -23,6 +23,7 @@ import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.Subsystem;
 import frc.robot.constants.Constants;
+import frc.robot.utils.PowerBudget;
 
 import org.ironmaple.simulation.IntakeSimulation;
 import org.ironmaple.simulation.IntakeSimulation.IntakeSide;
@@ -76,6 +77,15 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     // Latched by runIntakeUntilJam() the first time the roller stalls; see that method.
     private boolean m_hopperFull = false;
+
+    // ---- Brownout protection ----
+    // Last power tier whose current limits were actually pushed to the motors, so the configurator
+    // is only touched on a transition. The stator limit is tracked alongside it because the jam
+    // detector's threshold has to follow it down — see stallCurrentThresholdAmps().
+    private PowerBudget.Tier m_appliedPowerTier = PowerBudget.Tier.NORMAL;
+    private double m_appliedSupplyAmps = Double.NaN;
+    private double m_appliedStatorAmps = Double.NaN;
+    private double m_activeRollerStatorLimitAmps = kRollerCurrentLimits.StatorCurrentLimit;
 
     // Reusable control requests
     private final MotionMagicVoltage m_pivotRequest = new MotionMagicVoltage(0).withSlot(0);
@@ -274,8 +284,16 @@ public class GroundIntakeSubsystem implements Subsystem {
         return isAtPosition(Constants.GroundIntakeConstants.PIVOT_DOWN_ROTATIONS);
     }
 
+    /**
+     * Runs the roller, scaled by whatever the battery can currently afford.
+     *
+     * <p>The intake is the first thing this robot gives up when the battery starts to fold — see
+     * {@link PowerBudget}. Picking fuel up more slowly costs a little cycle time; a flywheel that
+     * loses speed mid-shot costs the ball. The scale is 1.0 whenever the battery is healthy, which
+     * is nearly always, so this is a no-op in every ordinary match.
+     */
     public void setRollerSpeed(double speed) {
-        m_rollerMotor.set(speed);
+        m_rollerMotor.set(speed * PowerBudget.intakeOutputScale());
     }
 
     public void neutralMode(){
@@ -398,12 +416,14 @@ public class GroundIntakeSubsystem implements Subsystem {
         return m_hopperFull;
     }
 
+    /** Scaled by the power budget, same as {@link #setRollerSpeed(double)}. */
     public void setLeftIndexerMotorSpeed(double speed) {
-        m_leftIndexerMotor.set(speed);
+        m_leftIndexerMotor.set(speed * PowerBudget.intakeOutputScale());
     }
 
+    /** Scaled by the power budget, same as {@link #setRollerSpeed(double)}. */
     public void setRightIndexerMotorSpeed(double speed) {
-        m_rightIndexerMotor.set(speed);
+        m_rightIndexerMotor.set(speed * PowerBudget.intakeOutputScale());
     }
 
     public void stop() {
@@ -414,8 +434,79 @@ public class GroundIntakeSubsystem implements Subsystem {
         m_rightIndexerMotor.set(0);
     }
 
+    /**
+     * Pushes the power budget's current limits onto the roller and both indexers whenever the tier
+     * changes, and puts each motor's own configured limits back on the way out.
+     *
+     * <p>Scaling the commanded output is not enough on its own: a roller with a ball wedged in it
+     * draws whatever the stator limit allows no matter how gently it is being asked to turn, and a
+     * stall is exactly the moment a sagging battery is least able to take it.
+     *
+     * <p>Only ever runs when something actually changed — the tier, or one of the live-tunable amp
+     * values behind it — so the configurator round-trip never lands in a normal loop. The zero
+     * timeout means it is not waited on either. Watching the amps as well as the tier is what makes
+     * {@code Tuning/Power/*IntakeSupplyAmps} take effect while sitting in a tier, rather than only
+     * at the next transition.
+     */
+    private void applyPowerBudgetCurrentLimits() {
+        PowerBudget.Tier tier = PowerBudget.tier();
+        double supplyAmps = PowerBudget.intakeSupplyCurrentLimitAmps();
+        double statorAmps = PowerBudget.intakeStatorCurrentLimitAmps();
+
+        boolean unchanged = tier == m_appliedPowerTier
+            && (tier == PowerBudget.Tier.NORMAL
+                || (supplyAmps == m_appliedSupplyAmps && statorAmps == m_appliedStatorAmps));
+        if (unchanged) {
+            return;
+        }
+        m_appliedPowerTier = tier;
+        m_appliedSupplyAmps = supplyAmps;
+        m_appliedStatorAmps = statorAmps;
+
+        CurrentLimitsConfigs roller;
+        CurrentLimitsConfigs indexer;
+        if (tier == PowerBudget.Tier.NORMAL) {
+            roller = kRollerCurrentLimits;
+            indexer = kIndexerCurrentLimits;
+            m_activeRollerStatorLimitAmps = kRollerCurrentLimits.StatorCurrentLimit;
+        } else {
+            roller = reducedLimits(supplyAmps, statorAmps);
+            indexer = roller;
+            m_activeRollerStatorLimitAmps = statorAmps;
+        }
+
+        m_rollerMotor.getConfigurator().apply(roller, 0.0);
+        m_leftIndexerMotor.getConfigurator().apply(indexer, 0.0);
+        m_rightIndexerMotor.getConfigurator().apply(indexer, 0.0);
+    }
+
+    private static CurrentLimitsConfigs reducedLimits(double supplyAmps, double statorAmps) {
+        return new CurrentLimitsConfigs()
+            .withSupplyCurrentLimitEnable(true)
+            .withSupplyCurrentLimit(supplyAmps)
+            .withStatorCurrentLimitEnable(true)
+            .withStatorCurrentLimit(statorAmps);
+    }
+
+    /**
+     * Stator current that counts as a stalled roller, in amps.
+     *
+     * <p>Normally the constant, but a roller whose stator limit has been pulled below that constant
+     * by the power budget can never reach it — jam detection would go quiet at exactly the point
+     * jams get most likely, since a roller running at reduced output is a roller more easily
+     * stopped by a ball. So while a reduced limit is in force the bar drops to a fraction of
+     * whatever the limit currently is.
+     */
+    private double stallCurrentThresholdAmps() {
+        return Math.min(
+            Constants.GroundIntakeConstants.ROLLER_STALL_CURRENT_AMPS,
+            m_activeRollerStatorLimitAmps
+                * Constants.PowerConstants.STALL_THRESHOLD_FRACTION_OF_LIMIT);
+    }
+
     @Override
     public void periodic() {
+        applyPowerBudgetCurrentLimits();
         updateStallDetection();
 
         SmartDashboard.putNumber("Intake/PivotPosition", getPivotPosition());
@@ -445,7 +536,7 @@ public class GroundIntakeSubsystem implements Subsystem {
         double rps = m_rollerVelocity.getValueAsDouble();
 
         boolean stallingNow =
-            amps >= Constants.GroundIntakeConstants.ROLLER_STALL_CURRENT_AMPS
+            amps >= stallCurrentThresholdAmps()
             && Math.abs(rps) <= Constants.GroundIntakeConstants.ROLLER_STALL_VELOCITY_RPS;
 
         double now = Timer.getFPGATimestamp();
@@ -460,7 +551,9 @@ public class GroundIntakeSubsystem implements Subsystem {
                >= Constants.GroundIntakeConstants.ROLLER_STALL_DEBOUNCE_SECONDS;
 
         SmartDashboard.putNumber("Intake/RollerCurrent", amps);
+        SmartDashboard.putNumber("Intake/RollerStallThresholdAmps", stallCurrentThresholdAmps());
         SmartDashboard.putNumber("Intake/RollerVelocity", rps);
+        SmartDashboard.putNumber("Intake/PowerScale", PowerBudget.intakeOutputScale());
         SmartDashboard.putBoolean("Intake/RollerStalled", m_rollerStalled);
         SmartDashboard.putBoolean("Intake/Unjamming", m_unjamming);
         SmartDashboard.putBoolean("Intake/HopperFull", m_hopperFull);

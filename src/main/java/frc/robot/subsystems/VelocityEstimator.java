@@ -32,9 +32,8 @@ import frc.robot.utils.TunableDouble;
  *       the wheels are slipping. Its weakness is that integrating a slightly-biased acceleration
  *       accumulates velocity error, which is why it alone cannot be trusted down a long straight.
  *   <li><b>Wheel odometry (correction, medium).</b> Pulled in as a first-order correction with time
- *       constant {@code WHEEL_TRUST_TAU_SECONDS}. This is the term that bounds IMU drift. The
- *       residual between the two is also integrated into a per-axis accelerometer bias estimate,
- *       so a constant IMU offset gets learned out instead of being fought forever.
+ *       constant {@code WHEEL_TRUST_TAU_SECONDS}. This is the term that bounds IMU drift. It also
+ *       decides, on its own, when the robot is standing still — see below.
  *   <li><b>Vision-fused pose (correction, slow).</b> Differentiated over a window to produce a
  *       noisy but <i>unbiased</i> velocity. Applied very weakly, it catches systematic wheel error
  *       (wrong wheel radius, carpet scrub) that wheel odometry cannot detect about itself.
@@ -43,6 +42,22 @@ import frc.robot.utils.TunableDouble;
  * <p>Net effect: the fast, high-frequency content of the estimate comes from the gyro and the slow,
  * low-frequency content from the wheels and cameras. Turn {@code WHEEL_TRUST_TAU_SECONDS} up to
  * lean further on the gyro, down to fall back toward plain wheel odometry.
+ *
+ * <p><b>The standstill is a special case, and an important one.</b> A complementary filter like this
+ * one has a steady-state velocity error of exactly (accelerometer error) × {@code
+ * WHEEL_TRUST_TAU_SECONDS} — that is its DC gain from one to the other. So every source of
+ * acceleration error, whether a sensor offset or a moment of gravity leaking into a horizontal axis
+ * as the chassis dips under braking, shows up as a phantom velocity that scales with the time
+ * constant and takes about as long to bleed off. A shooter aiming off a phantom velocity leads a
+ * target the robot is not moving toward, and that is most visible exactly where it is least
+ * excusable: parked, lined up, about to shoot.
+ *
+ * <p>Two things address it, both keyed off wheel odometry noticing the robot has stopped. The
+ * estimate is snapped to zero rather than allowed to decay there, so aim is correct the instant the
+ * robot settles; and the standstill is used as the one clean opportunity to read the accelerometer's
+ * bias directly, since a stopped robot's true acceleration is known to be zero. The bias is never
+ * learned while driving, because nothing observed while driving distinguishes a real offset from a
+ * transient.
  *
  * <p><b>Simulation note:</b> Phoenix's {@code Pigeon2SimState} cannot inject accelerometer readings,
  * so the IMU signals read zero under {@code simulateJava}. In simulation the acceleration input is
@@ -70,6 +85,11 @@ public class VelocityEstimator extends SubsystemBase {
     private double m_biasYMps2 = 0.0;
 
     private double m_lastUpdateTime = 0.0;
+
+    // Standstill detection. The dwell is how long the wheels have continuously read stopped, and
+    // m_atRest is that dwell having lasted long enough to believe.
+    private double m_restDwellSeconds = 0.0;
+    private boolean m_atRest = false;
 
     // Robot-frame acceleration actually fed to the integrator, kept for telemetry.
     private double m_accelRobotX = 0.0;
@@ -139,13 +159,23 @@ public class VelocityEstimator extends SubsystemBase {
         return m_yawRate.getValue().in(RadiansPerSecond);
     }
 
-    /** Snaps the estimate to wheel odometry and clears the learned bias. */
+    /** True while the wheels say the robot is standing still. */
+    public boolean isAtRest() {
+        return m_atRest;
+    }
+
+    /**
+     * Snaps the estimate to wheel odometry and clears the filter's transient state.
+     *
+     * <p>Deliberately leaves the learned accelerometer bias alone. That number is a property of the
+     * chip, not of the filter's history — it is the same offset before and after a disable — and
+     * throwing it away every time the robot is disabled means starting each enable having to learn
+     * it over again from scratch.
+     */
     public void reset() {
         ChassisSpeeds wheels = fieldRelativeWheelSpeeds();
         m_velXMps = wheels.vxMetersPerSecond;
         m_velYMps = wheels.vyMetersPerSecond;
-        m_biasXMps2 = 0.0;
-        m_biasYMps2 = 0.0;
         m_yawAccelRadPerSec2 = 0.0;
         m_lastYawRateRadPerSec = getYawRateRadPerSec();
         m_lastSimWheelVelX = wheels.vxMetersPerSecond;
@@ -166,19 +196,43 @@ public class VelocityEstimator extends SubsystemBase {
         }
 
         ChassisSpeeds wheelSpeeds = fieldRelativeWheelSpeeds();
+        double headingRad = m_drivetrain.getState().Pose.getRotation().getRadians();
 
-        // No bias can be learned from a robot that isn't being driven, so hold the filter pinned to
-        // wheel odometry while disabled. Going through reset() rather than just overwriting the
-        // velocity also keeps the derivative history current, so the first enabled loop differentiates
-        // against the present state instead of against whatever was true before the disable.
+        // Acceleration is read before any of the early returns below, because a robot standing
+        // still is precisely when the accelerometer is worth reading: whatever it says then is the
+        // sensor's own offset.
+        updateRobotFrameAcceleration(dt, wheelSpeeds, headingRad);
+        updateRestDetector(wheelSpeeds, dt);
+
+        // Pinned to wheel odometry while disabled. Going through reset() rather than just
+        // overwriting the velocity also keeps the derivative history current, so the first enabled
+        // loop differentiates against the present state instead of against whatever was true before
+        // the disable. The standstill is put to work: a robot sitting on the field waiting for a
+        // match is the longest clean look at the accelerometer's bias it will ever get, so by the
+        // time it is enabled the offset is already learned.
         if (DriverStation.isDisabled()) {
             reset();
+            updateBiasAtRest(dt);
             publishTelemetry(wheelSpeeds, 0.0, 0.0);
             return;
         }
 
-        double headingRad = m_drivetrain.getState().Pose.getRotation().getRadians();
-        updateRobotFrameAcceleration(dt, wheelSpeeds, headingRad);
+        // --- Zero-velocity update ---
+        // Integrating acceleration cannot discover on its own that the robot has stopped; it can
+        // only be told. Without this, every scrap of error picked up during the stop — wheel slip,
+        // the nose dipping under braking and leaking a little gravity into the accelerometer's
+        // horizontal axes — sits in the estimate as a phantom velocity and takes
+        // WHEEL_TRUST_TAU_SECONDS to bleed off, during which the shooter is still leading a target
+        // the robot is no longer moving toward. The wheels know better here, and at a standstill
+        // they are not merely better but exactly right, so take their word for it outright rather
+        // than mixing it in at a gain.
+        if (m_atRest) {
+            m_velXMps = 0.0;
+            m_velYMps = 0.0;
+            updateBiasAtRest(dt);
+            publishTelemetry(wheelSpeeds, 0.0, 0.0);
+            return;
+        }
 
         // --- Predict: integrate bias-corrected acceleration, rotated into the field frame ---
         double correctedX = m_accelRobotX - m_biasXMps2;
@@ -195,17 +249,14 @@ public class VelocityEstimator extends SubsystemBase {
         m_velXMps += wheelGain * residualX;
         m_velYMps += wheelGain * residualY;
 
-        // --- Learn the accelerometer bias from that same residual ---
-        // A persistent residual in one direction means the integrator is consistently running fast
-        // or slow, which is exactly what a constant accelerometer offset looks like. Rotate the
-        // residual back into the robot frame first so the learned bias stays attached to the sensor.
-        double biasGain = m_accelBiasGain.get();
-        if (biasGain > 0.0) {
-            double residualRobotX =  residualX * cosH + residualY * sinH;
-            double residualRobotY = -residualX * sinH + residualY * cosH;
-            m_biasXMps2 -= biasGain * residualRobotX * dt;
-            m_biasYMps2 -= biasGain * residualRobotY * dt;
-        }
+        // Note what is deliberately NOT here: learning the accelerometer bias from that residual.
+        // While the robot is driving, the residual is dominated by things that are not bias — wheel
+        // slip, and weight transfer tilting the chip so a little gravity leaks into its horizontal
+        // axes — and both of those are at their worst during a hard stop. Integrating them is
+        // windup, and because this filter's steady-state velocity error is the acceleration error
+        // times the wheel-trust time constant, a bias wound up during a stop comes straight back out
+        // as a phantom velocity that outlives the stop. The bias is learned at a standstill instead,
+        // where the observation is clean — see updateBiasAtRest.
 
         // --- Correct against the vision-fused pose ---
         double visionVelX = 0.0;
@@ -269,6 +320,67 @@ public class VelocityEstimator extends SubsystemBase {
         double alpha = m_yawAccelRadPerSec2;
         m_accelRobotX = pigeonAccelX + alpha * ry + omega * omega * rx;
         m_accelRobotY = pigeonAccelY - alpha * rx + omega * omega * ry;
+    }
+
+    /**
+     * Decides whether the robot is standing still, from wheel odometry alone.
+     *
+     * <p>Wheel odometry is the right sensor for this and the IMU is the wrong one: an accelerometer
+     * reads the same zero whether the robot is parked or gliding at 3 m/s, whereas a swerve's wheels
+     * physically cannot report zero while the chassis is still translating.
+     *
+     * <p>The dwell is what makes it safe. Braking hard enough to skid drives the wheels to a halt
+     * while the robot is genuinely still sliding, and for that instant the wheels do lie; requiring
+     * them to hold the claim for {@code ZERO_VELOCITY_DWELL_SECONDS} outlasts the skid.
+     *
+     * <p>Note that a robot pivoting in place passes: its center really is going nowhere, which is
+     * what this estimate is about. That case is excluded from bias learning, but not from the
+     * velocity update, where zero is the right answer.
+     */
+    private void updateRestDetector(ChassisSpeeds wheelSpeeds, double dt) {
+        double wheelSpeed = Math.hypot(
+            wheelSpeeds.vxMetersPerSecond, wheelSpeeds.vyMetersPerSecond);
+        if (wheelSpeed > VelocityEstimatorConstants.ZERO_VELOCITY_WHEEL_SPEED_MPS) {
+            m_restDwellSeconds = 0.0;
+            m_atRest = false;
+            return;
+        }
+        m_restDwellSeconds += dt;
+        m_atRest = m_restDwellSeconds >= VelocityEstimatorConstants.ZERO_VELOCITY_DWELL_SECONDS;
+    }
+
+    /**
+     * Learns the accelerometer's offset, and only ever from a robot that is standing still.
+     *
+     * <p>At a standstill the robot's true acceleration is known to be exactly zero, so whatever the
+     * accelerometer reports with gravity already removed is the sensor's offset, read directly. No
+     * residual, no inference, nothing to confuse a transient for a bias — which is the failure the
+     * old residual-driven version had, and the reason a hard stop used to leave the estimate holding
+     * a phantom velocity.
+     *
+     * <p>Spinning in place is excluded: the Pigeon sits off-center, so what it reports there is
+     * mostly centripetal acceleration that {@link #updateRobotFrameAcceleration} has had to subtract
+     * back off, and the leftovers of that subtraction are not a clean look at the chip's offset.
+     */
+    private void updateBiasAtRest(double dt) {
+        double biasGain = m_accelBiasGain.get();
+        if (biasGain <= 0.0 || !m_atRest) {
+            return;
+        }
+        if (Math.abs(getYawRateRadPerSec())
+                > VelocityEstimatorConstants.ZERO_VELOCITY_YAW_RATE_RAD_PER_SEC) {
+            return;
+        }
+
+        double gain = MathUtil.clamp(biasGain * dt, 0.0, 1.0);
+        m_biasXMps2 = clampBias(m_biasXMps2 + gain * (m_accelRobotX - m_biasXMps2));
+        m_biasYMps2 = clampBias(m_biasYMps2 + gain * (m_accelRobotY - m_biasYMps2));
+    }
+
+    private static double clampBias(double biasMps2) {
+        return MathUtil.clamp(biasMps2,
+            -VelocityEstimatorConstants.ACCEL_BIAS_MAX_MPS2,
+            VelocityEstimatorConstants.ACCEL_BIAS_MAX_MPS2);
     }
 
     /** Differentiates yaw rate into yaw acceleration, low-passed to keep the derivative usable. */
@@ -350,5 +462,12 @@ public class VelocityEstimator extends SubsystemBase {
         SmartDashboard.putNumber("Velocity/AccelBiasY", m_biasYMps2);
         SmartDashboard.putNumber("Velocity/YawRateRadPerSec", getYawRateRadPerSec());
         SmartDashboard.putNumber("Velocity/YawAccelRadPerSec2", m_yawAccelRadPerSec2);
+        SmartDashboard.putBoolean("Velocity/AtRest", m_atRest);
+        // What the learned bias is costing in velocity terms. The filter's steady-state velocity
+        // error is the acceleration error times the wheel-trust time constant, so this is the
+        // standing error the bias alone would produce — and the number to watch if the shooter is
+        // leading a target the robot is not moving toward.
+        SmartDashboard.putNumber("Velocity/BiasVelocityErrorMps",
+            Math.hypot(m_biasXMps2, m_biasYMps2) * m_wheelTrustTau.get());
     }
 }

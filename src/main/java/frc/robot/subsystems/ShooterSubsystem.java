@@ -1,6 +1,7 @@
 package frc.robot.subsystems;
 
 import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.SoftwareLimitSwitchConfigs;
@@ -23,6 +24,7 @@ import edu.wpi.first.math.kinematics.ChassisSpeeds;
 import edu.wpi.first.math.system.plant.DCMotor;
 import edu.wpi.first.math.system.plant.LinearSystemId;
 import edu.wpi.first.units.Units;
+import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.RobotController;
 import edu.wpi.first.wpilibj.simulation.FlywheelSim;
@@ -33,6 +35,7 @@ import frc.robot.constants.Constants;
 import frc.robot.utils.AimSolver;
 import frc.robot.utils.AimSolver.AimSolution;
 import frc.robot.utils.AimSolver.ArcPolicy;
+import frc.robot.utils.FlywheelDroopCompensator;
 import frc.robot.utils.ShooterTuning;
 import frc.robot.utils.TunableDouble;
 
@@ -59,6 +62,34 @@ public class ShooterSubsystem implements Subsystem {
     private boolean m_turretWrapped = false;
     private double m_commandedFlywheelRps = 0.0;
     private AimSolution m_lastSolution = null;
+
+    // ---- Flywheel ----
+    // The speed actually handed to the velocity loop: the aim solution's number plus whatever the
+    // droop compensator says it takes for the ball to leave at that number. Distinct from
+    // m_commandedFlywheelRps, which stays the aim figure so callers asking "is the shooter parked"
+    // and the telemetry comparing solution against reality both keep meaning what they meant.
+    private double m_flywheelSetpointRps = 0.0;
+    private final FlywheelDroopCompensator m_droopCompensator = new FlywheelDroopCompensator();
+
+    /**
+     * Rate the flywheel's velocity is published and sampled at, Hz. Set by the width of the thing
+     * being measured: a ball's contact with the wheel lasts on the order of 10-25 ms, so anything
+     * near the 50 Hz main loop rate cannot see the dip at all. See the constructor.
+     */
+    private static final double kFlywheelSampleHz = 200.0;
+
+    /** Registered once so the fast sampler can refresh them without going through the motor object. */
+    private final StatusSignal<AngularVelocity> m_flywheelVelocity;
+
+    /**
+     * Applied output as a fraction of supply voltage. The droop compensator freezes its learning
+     * while this is pinned: a wheel already at full voltage cannot be made to spin faster by asking
+     * for more, so a deficit measured there would wind the command up against a shot that simply is
+     * not achievable at this gearing.
+     */
+    private final StatusSignal<Double> m_flywheelDutyCycle;
+    // Reused rather than reallocated per loop; the acceleration field is refilled each call.
+    private final VelocityVoltage m_flywheelRequest = new VelocityVoltage(0).withSlot(0);
 
     // ---- Simulation ----
     // The turret and rack skip physics simulation entirely and just snap their simulated
@@ -101,6 +132,31 @@ public class ShooterSubsystem implements Subsystem {
     private double m_appliedTurretKV = Constants.ShooterConstants.ROTATOR_KV;
     private double m_appliedTurretKS = Constants.ShooterConstants.ROTATOR_KS;
 
+    // ---- Live PID tuning, flywheel ----
+    // Same mechanism as the turret's above. These matter more than they look: how quickly the
+    // velocity loop puts back the speed a ball took out of the wheel is half of what decides
+    // whether the NEXT shot leaves at the right speed, and it is not something that can be judged
+    // without watching "Shooter/Flywheel/LastRecoverySec" change as the gains do.
+    //
+    // kA is absent on purpose — it comes from the wheel's inertia (see flywheelKaFromMoi), so the
+    // thing to edit is FLYWHEEL_MOI_KG_M2, not a gain.
+    private final TunableDouble m_flywheelKP =
+        new TunableDouble("Tuning/Flywheel/kP", Constants.ShooterConstants.FLYWHEEL_KP);
+    private final TunableDouble m_flywheelKI =
+        new TunableDouble("Tuning/Flywheel/kI", Constants.ShooterConstants.FLYWHEEL_KI);
+    private final TunableDouble m_flywheelKD =
+        new TunableDouble("Tuning/Flywheel/kD", Constants.ShooterConstants.FLYWHEEL_KD);
+    private final TunableDouble m_flywheelKV =
+        new TunableDouble("Tuning/Flywheel/kV", Constants.ShooterConstants.FLYWHEEL_KV);
+    private final TunableDouble m_flywheelKS =
+        new TunableDouble("Tuning/Flywheel/kS", Constants.ShooterConstants.FLYWHEEL_KS);
+
+    private double m_appliedFlywheelKP = Constants.ShooterConstants.FLYWHEEL_KP;
+    private double m_appliedFlywheelKI = Constants.ShooterConstants.FLYWHEEL_KI;
+    private double m_appliedFlywheelKD = Constants.ShooterConstants.FLYWHEEL_KD;
+    private double m_appliedFlywheelKV = Constants.ShooterConstants.FLYWHEEL_KV;
+    private double m_appliedFlywheelKS = Constants.ShooterConstants.FLYWHEEL_KS;
+
     private static final Slot0Configs turretRotatorGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.ROTATOR_KP)
         .withKI(Constants.ShooterConstants.ROTATOR_KI)
@@ -113,11 +169,54 @@ public class ShooterSubsystem implements Subsystem {
         .withKI(Constants.ShooterConstants.RACK_KI)
         .withKD(Constants.ShooterConstants.RACK_KD);
 
+    /**
+     * Acceleration feedforward for the flywheel, in volts per (rotor rotation/s²), derived from the
+     * wheel's moment of inertia instead of guessed at.
+     *
+     * <p>Spinning the rotor up at {@code α} rad/s² takes {@code τ = J·α} of torque, which takes
+     * {@code τ/Kt} of current, which takes {@code τ·R/Kt} of voltage across the winding. Converting
+     * to the rotor rotations/s² Phoenix works in puts a {@code 2π} on the front:
+     *
+     * <pre>kA = 2π · J_rotor · R / Kt</pre>
+     *
+     * <p>{@code J_rotor} is the inertia as the rotor feels it — the wheel's own inertia divided by
+     * the square of the reduction, which is why the 28:18 gearing makes this nearly two and a half
+     * times smaller than the direct-drive figure would have been.
+     *
+     * <p>This is what makes {@code FLYWHEEL_MOI_KG_M2} worth measuring rather than leaving at its
+     * placeholder: it is the same number that decides how far the wheel sags per ball, so getting
+     * it right improves both the recovery and the compensation for what was lost.
+     *
+     * <p>kA only earns its keep because {@link #setShooterFlywheelVelocity} hands the request the
+     * setpoint's own rate of change — a Phoenix velocity request multiplies kA by the acceleration
+     * it is given, and the default is zero.
+     *
+     * @param rotorMoiKgM2 inertia reflected to the rotor, i.e. {@code FLYWHEEL_ROTOR_MOI_KG_M2}
+     */
+    private static double flywheelKaFromMoi(double rotorMoiKgM2) {
+        return 2.0 * Math.PI * rotorMoiKgM2 * kFlywheelGearbox.rOhms / kFlywheelGearbox.KtNMPerAmp;
+    }
+
+    /** Robot loop period, used to turn a setpoint step into the rate of change kA acts on. */
+    private static final double kLoopPeriodSeconds = 0.020;
+
+    /**
+     * The most acceleration the flywheel motor can actually produce, in rotor rotations/s², from
+     * stall torque against the wheel's inertia. The setpoint's rate of change is clamped to it, so
+     * a step command asks kA for the volts to accelerate as hard as the motor can and not for the
+     * fictional volts to do it in one 20 ms loop.
+     */
+    private static final double kFlywheelMaxAccelRps2 =
+        kFlywheelGearbox.stallTorqueNewtonMeters
+        / (2.0 * Math.PI * Constants.ShooterConstants.FLYWHEEL_ROTOR_MOI_KG_M2);
+
     private static final Slot0Configs flywheelGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.FLYWHEEL_KP)
         .withKI(Constants.ShooterConstants.FLYWHEEL_KI)
         .withKD(Constants.ShooterConstants.FLYWHEEL_KD)
-        .withKV(Constants.ShooterConstants.FLYWHEEL_KV);
+        .withKV(Constants.ShooterConstants.FLYWHEEL_KV)
+        .withKS(Constants.ShooterConstants.FLYWHEEL_KS)
+        .withKA(flywheelKaFromMoi(Constants.ShooterConstants.FLYWHEEL_ROTOR_MOI_KG_M2));
 
     // Turret rotator soft limits in motor rotations (0 motor rotations = 0° turret angle)
     private static final double TURRET_MIN_ROTATIONS =
@@ -266,7 +365,16 @@ public class ShooterSubsystem implements Subsystem {
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelGains);
         m_shooterFlywheelMotor.getConfigurator().apply(flywheelCurrentLimits);
         // Velocity is read back to compute simulated projectile launch speed — request it explicitly.
-        m_shooterFlywheelMotor.getVelocity().setUpdateFrequency(50);
+        // 200 Hz, not the 50 Hz everything else here uses. A ball is in contact with the wheel for
+        // something like 10-25 ms, so the dip it produces is at most one sample wide at 50 Hz: the
+        // detector would miss most troughs outright and catch a random point on the curve for the
+        // rest, which is worse than missing them — it would learn a confidently wrong number. At
+        // 200 Hz a contact spans 2-5 samples, and the Hoot log captures the dip's actual shape,
+        // which is how the contact time itself gets measured.
+        m_flywheelVelocity = m_shooterFlywheelMotor.getVelocity();
+        m_flywheelDutyCycle = m_shooterFlywheelMotor.getDutyCycle();
+        BaseStatusSignal.setUpdateFrequencyForAll(
+            kFlywheelSampleHz, m_flywheelVelocity, m_flywheelDutyCycle);
         m_shooterFlywheelMotor.optimizeBusUtilization();
 
         // Tilt compensation reads the Pigeon through getRotation3d(), which is fed by the four
@@ -280,7 +388,9 @@ public class ShooterSubsystem implements Subsystem {
         if (RobotBase.isSimulation()) {
             m_flywheelSim = new FlywheelSim(
                 LinearSystemId.createFlywheelSystem(
-                    kFlywheelGearbox, 0.001, Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO),
+                    kFlywheelGearbox,
+                    Constants.ShooterConstants.FLYWHEEL_MOI_KG_M2,
+                    Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO),
                 kFlywheelGearbox
             );
         } else {
@@ -587,8 +697,11 @@ public class ShooterSubsystem implements Subsystem {
             s.turretAngleDeg() - getTurretRotatorAngleDeg());
         SmartDashboard.putNumber("Shooter/Physics/RackErrorDeg",
             s.rackAngleDeg() - getShooterRackAngleDeg());
+        // Against the solution's own number, not the compensated setpoint — this row answers "did
+        // the ball get the speed the solve asked for", which is the question a missed shot raises.
         SmartDashboard.putNumber("Shooter/Physics/FlywheelErrorRPS",
             s.flywheelRps() - getShooterFlywheelVelocityRps());
+        SmartDashboard.putBoolean("Shooter/Physics/FlywheelReady", isFlywheelReady());
 
         SmartDashboard.putBoolean("Shooter/Physics/RackClamped", s.rackClamped());
         SmartDashboard.putBoolean("Shooter/Physics/SpeedClamped", s.speedClamped());
@@ -757,11 +870,42 @@ public class ShooterSubsystem implements Subsystem {
         setShooterRackPosition(angleToRackPosition(angleDeg));
     }
 
+    /**
+     * Commands the flywheel, biased by whatever the droop compensator says it costs to actually
+     * deliver this speed to a ball.
+     *
+     * <p>The aim solution's number is the speed the ball has to <i>leave</i> at, and a wheel held
+     * exactly there does not produce it: the ball takes energy out of the wheel on its way through,
+     * so it separates from a wheel that has already slowed. The bias added here is measured from
+     * the robot's own shots — see {@link FlywheelDroopCompensator} — and is zero until there is
+     * something to measure on a real field, so a mis-tuned compensator can never make the shot
+     * worse than an uncompensated one by more than {@code FLYWHEEL_MAX_COMPENSATION_RPS}.
+     *
+     * <p>The request also carries the setpoint's own rate of change as its acceleration, which is
+     * what gives the inertia-derived kA something to act on: a solution walking the speed up as the
+     * robot backs away from the hub gets the volts for it immediately, rather than after kP has
+     * noticed the wheel falling behind.
+     *
+     * @param velocity the speed the aim solution asked for, in motor RPS
+     */
     public void setShooterFlywheelVelocity(double velocity) {
         double clamped = Math.max(-Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
             Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC, velocity));
         m_commandedFlywheelRps = clamped;
-        m_shooterFlywheelMotor.setControl(new VelocityVoltage(clamped));
+
+        // A parked wheel is parked. Compensating zero would spin a flywheel that a mode has
+        // deliberately stopped — storage mode's whole point is that nothing is spinning.
+        double setpoint = clamped <= 0.0
+            ? clamped
+            : Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
+                clamped + m_droopCompensator.compensationRps(clamped));
+
+        double accelRps2 = MathUtil.clamp(
+            (setpoint - m_flywheelSetpointRps) / kLoopPeriodSeconds,
+            -kFlywheelMaxAccelRps2, kFlywheelMaxAccelRps2);
+        m_flywheelSetpointRps = setpoint;
+        m_shooterFlywheelMotor.setControl(
+            m_flywheelRequest.withVelocity(setpoint).withAcceleration(accelRps2));
     }
 
     /**
@@ -769,14 +913,84 @@ public class ShooterSubsystem implements Subsystem {
      * {@link #getShooterFlywheelVelocityRps()}, which is what the wheel is actually doing — this is
      * what it was asked for, so a caller can tell "the shooter is parked" from "the shooter is
      * spinning down".
+     *
+     * <p>This is the <i>aim solution's</i> number, before droop compensation. See
+     * {@link #getFlywheelSetpointRps()} for the one the velocity loop is chasing.
      */
     public double getCommandedFlywheelRps() {
         return m_commandedFlywheelRps;
     }
 
-    /** Returns the current flywheel speed in motor rotations per second (FLYWHEEL_GEAR_RATIO is 1, direct drive). */
+    /** The speed the velocity loop is actually holding to, in motor RPS — aim target plus droop bias. */
+    public double getFlywheelSetpointRps() {
+        return m_flywheelSetpointRps;
+    }
+
+    /**
+     * Current flywheel speed in MOTOR rotations per second, straight off the rotor.
+     *
+     * <p>Motor units, not wheel units — no {@code SensorToMechanismRatio} is configured on this
+     * motor, and every commanded speed in the project (the lookup tables, the solver's output,
+     * {@code FLYWHEEL_MAX_REV_PER_SEC}, kV) is in the same frame, so this compares directly against
+     * all of them. The gearing is accounted for once, in
+     * {@code FLYWHEEL_EFFECTIVE_DIAMETER_METERS}, where motor speed becomes ball speed.
+     *
+     * <p>See {@link #getFlywheelWheelRps()} for what the wheel itself is doing.
+     */
     public double getShooterFlywheelVelocityRps() {
         return m_shooterFlywheelMotor.getVelocity().getValueAsDouble();
+    }
+
+    /**
+     * Speed of the LARGE (4 in) flywheel itself, in wheel rotations per second. Telemetry only —
+     * nothing commands in this frame — but it is the number to compare against a tachometer or a
+     * slow-motion video when checking that the gearing constants match the real gearbox.
+     */
+    public double getFlywheelWheelRps() {
+        return getShooterFlywheelVelocityRps() / Constants.ShooterConstants.FLYWHEEL_GEAR_RATIO;
+    }
+
+    /**
+     * True when the flywheel is within {@code FLYWHEEL_AT_SPEED_TOLERANCE_RPS} of the speed it is
+     * being held to, and so is ready for a ball. False whenever the wheel is parked.
+     *
+     * <p>Note what this is measured against: the compensated setpoint, not the aim target. A wheel
+     * sitting at the aim target is not ready — that is precisely the state that produces a shot
+     * which leaves slow.
+     */
+    public boolean isFlywheelReady() {
+        return m_commandedFlywheelRps > 0.0 && m_droopCompensator.isAtSpeed();
+    }
+
+    /** Droop compensator, for telemetry and for commands that want to hold fire until it is ready. */
+    public FlywheelDroopCompensator getDroopCompensator() {
+        return m_droopCompensator;
+    }
+
+    /**
+     * Feeds one fresh velocity sample to the droop detector. Scheduled at
+     * {@link #kFlywheelSampleHz} from {@code Robot}, NOT from {@code periodic()} — a ball's whole
+     * contact with the wheel fits inside a single 50 Hz loop, so a detector running at loop rate is
+     * measuring an event it cannot see.
+     *
+     * <p>Runs on the main robot thread (WPILib's {@code addPeriodic} callbacks are interleaved with
+     * the main loop, not threaded), so there is no synchronisation to think about against the
+     * commands that write {@code m_flywheelSetpointRps}.
+     *
+     * <p>The setpoint it compares against is whatever the last command loop commanded, which is the
+     * right pairing: the wheel is chasing that number for the whole 20 ms until the next one.
+     */
+    public void sampleFlywheelDroop() {
+        BaseStatusSignal.refreshAll(m_flywheelVelocity, m_flywheelDutyCycle);
+        m_droopCompensator.update(
+            m_flywheelSetpointRps,
+            m_flywheelVelocity.getValueAsDouble(),
+            m_flywheelDutyCycle.getValueAsDouble());
+    }
+
+    /** The rate {@link #sampleFlywheelDroop()} expects to be called at, in seconds per call. */
+    public static double flywheelSamplePeriodSeconds() {
+        return 1.0 / kFlywheelSampleHz;
     }
 
     /**
@@ -887,8 +1101,15 @@ public class ShooterSubsystem implements Subsystem {
     public void periodic() {
         publishTiltTelemetry();
 
-        // Re-applies on any change, which includes tuning mode being switched off — the gains snap
-        // back to the compiled constants the same way every other tunable does.
+        applyTurretGains();
+        applyFlywheelGains();
+    }
+
+    /**
+     * Re-applies the turret's gains on any change, which includes tuning mode being switched off —
+     * the gains snap back to the compiled constants the same way every other tunable does.
+     */
+    private void applyTurretGains() {
         double kP = m_turretKP.get();
         double kI = m_turretKI.get();
         double kD = m_turretKD.get();
@@ -904,6 +1125,28 @@ public class ShooterSubsystem implements Subsystem {
             m_appliedTurretKS = kS;
             m_turretRotatorMotor.getConfigurator().apply(
                 new Slot0Configs().withKP(kP).withKI(kI).withKD(kD).withKV(kV).withKS(kS));
+        }
+    }
+
+    /** The same re-apply-on-change for the flywheel. kA is not tunable — it comes from the inertia. */
+    private void applyFlywheelGains() {
+        double kP = m_flywheelKP.get();
+        double kI = m_flywheelKI.get();
+        double kD = m_flywheelKD.get();
+        double kV = m_flywheelKV.get();
+        double kS = m_flywheelKS.get();
+        if (kP != m_appliedFlywheelKP || kI != m_appliedFlywheelKI
+                || kD != m_appliedFlywheelKD || kV != m_appliedFlywheelKV
+                || kS != m_appliedFlywheelKS) {
+            m_appliedFlywheelKP = kP;
+            m_appliedFlywheelKI = kI;
+            m_appliedFlywheelKD = kD;
+            m_appliedFlywheelKV = kV;
+            m_appliedFlywheelKS = kS;
+            m_shooterFlywheelMotor.getConfigurator().apply(
+                new Slot0Configs().withKP(kP).withKI(kI).withKD(kD).withKV(kV).withKS(kS)
+                    .withKA(flywheelKaFromMoi(
+                        Constants.ShooterConstants.FLYWHEEL_ROTOR_MOI_KG_M2)));
         }
     }
 

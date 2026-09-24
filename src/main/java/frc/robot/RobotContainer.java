@@ -45,6 +45,7 @@ import frc.robot.subsystems.LEDSubsystem;
 import frc.robot.subsystems.VelocityEstimator;
 import frc.robot.subsystems.VisionSubsystem;
 import frc.robot.subsystems.VisionSubsystem.VisionPoseEstimate;
+import frc.robot.utils.PowerBudget;
 
 public class RobotContainer {
     // Base speeds (100% capability)
@@ -179,13 +180,20 @@ public class RobotContainer {
     private void configureBindings() {
         // Note that X is defined as forward according to WPILib convention,
         // and Y is defined as to the left according to WPILib convention.
+        // The power-budget scale is applied here, at the driver's stick, rather than inside the
+        // drivetrain — which means autonomous is untouched by it. That is deliberate: a path
+        // follower that is quietly speed-limited does not drive its path slower, it drives a
+        // different path. See PowerBudget for what the scale is protecting and why the drivetrain
+        // is second in line behind the intake.
         drivetrain.setDefaultCommand(
             // Drivetrain will execute this command periodically
-            drivetrain.applyRequest(() ->
-                drive.withVelocityX(applyLinearDeadband(-joystick.getLeftY()) * MaxSpeed) // Drive forward with negative Y (forward)
-                    .withVelocityY(applyLinearDeadband(-joystick.getLeftX()) * MaxSpeed) // Drive left with negative X (left)
-                    .withRotationalRate(applyLinearDeadband(-getRotationInput()) * MaxAngularRate) // Drive counterclockwise with negative X (left)
-            )
+            drivetrain.applyRequest(() -> {
+                double driveScale = PowerBudget.driveOutputScale();
+                return drive
+                    .withVelocityX(applyLinearDeadband(-joystick.getLeftY()) * MaxSpeed * driveScale) // Drive forward with negative Y (forward)
+                    .withVelocityY(applyLinearDeadband(-joystick.getLeftX()) * MaxSpeed * driveScale) // Drive left with negative X (left)
+                    .withRotationalRate(applyLinearDeadband(-getRotationInput()) * MaxAngularRate * driveScale); // Drive counterclockwise with negative X (left)
+            })
         );
 
         // Idle while the robot is disabled. This ensures the configured
@@ -316,6 +324,20 @@ public class RobotContainer {
     public Command getAutonomousCommand() {
         // Return the selected auto from the chooser
         return autoChooser.getSelected();
+    }
+
+    /**
+     * Feeds the flywheel droop detector one fast sample. Scheduled by {@link Robot} at
+     * {@link ShooterSubsystem#flywheelSamplePeriodSeconds()}, far faster than the main loop — see
+     * {@link ShooterSubsystem#sampleFlywheelDroop()} for why it cannot live in periodic().
+     */
+    public void sampleFlywheelDroop() {
+        shooter.sampleFlywheelDroop();
+    }
+
+    /** How often {@link #sampleFlywheelDroop()} wants to be called, in seconds. */
+    public static double flywheelSamplePeriodSeconds() {
+        return ShooterSubsystem.flywheelSamplePeriodSeconds();
     }
 
     /** Publishes current mechanism angles as 3D poses for AdvantageScope. Called every loop from {@link Robot}. */

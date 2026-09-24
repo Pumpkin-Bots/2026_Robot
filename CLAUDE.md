@@ -30,6 +30,9 @@ src/main/java/frc/robot/
 │   └── VisionSubsystem.java         # Dual PhotonVision cameras, AprilTag pose estimation
 ├── constants/
 │   └── VisionConstants.java          # Vision config (camera names, transforms, std devs)
+├── utils/
+│   ├── FlywheelDroopCompensator.java # Learns per-shot flywheel sag, biases commanded RPS
+│   └── PowerBudget.java              # Brownout tiers: cuts intake, then drive, never the shooter
 └── generated/
     └── TunerConstants.java           # CTRE Tuner X generated swerve constants
 src/main/deploy/
@@ -68,6 +71,49 @@ mode: the triggers do nothing unless shooter mode is active, and releasing eithe
 mode (`RobotContainer.m_shooterModeActive` / `restoreShooterMode`). Both triggers are disabled in
 simulation — the sim's raw axis order on this Mac doesn't match the Driver Station's, and the left
 trigger is already the sim's manual-fire control.
+
+### Flywheel Speed Delivery
+The aim solve produces the speed the ball must *leave* at; a wheel held exactly there does not
+deliver it, because the ball takes energy out of the wheel on its way through.
+`FlywheelDroopCompensator` learns **how far below setpoint the wheel sits at the instant the ball
+separates** — that trough is what sets the ball's speed, so biasing the command up by it puts
+separation on target. Balls are found as *turning points* in the tracking error: a confirmed
+rebound off a local minimum is one ball. That matters because during rapid fire the wheel only
+partly recovers between balls, and a detector waiting for a return to baseline reads a whole burst
+as one sag and learns nothing from it.
+
+The deficit is learned into 10-RPS bins over commanded speed, not as a single number: the motor's
+push-back during contact collapses near free speed, so the net dip is strongly non-linear (roughly
+0 RPS at 50 motor RPS, ~8 RPS at 90). Outside measured bins the interpolation clamps rather than
+extrapolating. Learning freezes while the motor is voltage-saturated, since asking a maxed-out
+wheel for more speed cannot produce any. Cold start falls back to a physics seed from
+`FLYWHEEL_MOI_KG_M2`; inert in simulation (maple-sim projectiles leave at exactly wheel speed).
+
+The detector runs at **200 Hz** via `Robot.addPeriodic`, not the 50 Hz main loop, and the flywheel
+velocity signal is published at 200 Hz to match — a ball's contact is 10–25 ms, so at loop rate the
+trough is one sample wide and usually missed. Lowering either rate breaks it.
+
+`FLYWHEEL_EFFECTIVE_DIAMETER_METERS` is **derived**, not hand-entered — it is the single point where
+motor RPS becomes ball speed, and it carries both the 28:18 motor reduction and the 28:18
+large-to-small wheel ratio. Before this, `FLYWHEEL_GEAR_RATIO` reached only the simulation and had
+no effect on a real shot. Note the 28:18 reduction cut ball speed per motor rotation by ~43%:
+`flywheelRPSTable` needs re-taking, and long shuttle passes may exceed
+`FLYWHEEL_MAX_REV_PER_SEC` (watch `Shooter/Physics/SpeedClamped`).
+
+### Power Priority
+`PowerBudget` (ticked from `Robot.robotPeriodic()`, before the scheduler) watches battery voltage
+and enforces a stated priority well above the RoboRIO's own 6.8 V cutoff: the flywheel, rack,
+turret, and feeder are **never** reduced; the intake rollers/indexers are cut first; the swerve
+drive is cut second, and teleop only — the scale is applied at the driver's stick so PathPlanner
+autos are untouched. Tiers are hysteretic with a minimum dwell. Cutting the roller's current limit
+also lowers the jam-detection threshold to match, so detection doesn't go silent under protection.
+
+### Tuning & Documentation
+Both systems are fully live-tunable under `Tuning/Power/` and `Tuning/Flywheel/`, gated behind
+`Tuning/TuningModeEnabled` like every other `TunableDouble`. The two operator switches
+(`Power/BrownoutProtectionEnabled`, `Shooter/HoldFeedUntilAtSpeed`) are `DashboardToggle`s and are
+live at all times. See `docs/POWER_AND_FLYWHEEL_TUNING.md` for what each knob is for and when to
+reach for it.
 
 ### Field-Position Logic
 `ShooterMode` decides what to do every loop from where the **shooter's launch point** is (not the

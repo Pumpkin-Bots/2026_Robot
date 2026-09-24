@@ -10,6 +10,7 @@ import edu.wpi.first.wpilibj.TimedRobot;
 import edu.wpi.first.wpilibj2.command.Command;
 import edu.wpi.first.wpilibj2.command.CommandScheduler;
 
+import frc.robot.utils.PowerBudget;
 import frc.robot.utils.TuningMode;
 
 public class Robot extends TimedRobot {
@@ -24,12 +25,23 @@ public class Robot extends TimedRobot {
 
     public Robot() {
         m_robotContainer = new RobotContainer();
+
+        // The flywheel droop detector runs far faster than the main loop. A ball is in contact with
+        // the wheel for roughly 10-25 ms, so at 50 Hz the dip it produces is at most one sample
+        // wide — the detector would miss most shots and mis-measure the rest. This callback is
+        // interleaved with the main loop on the same thread, so nothing here needs locking.
+        addPeriodic(
+            m_robotContainer::sampleFlywheelDroop,
+            RobotContainer.flywheelSamplePeriodSeconds());
     }
 
     @Override
     public void robotPeriodic() {
         m_timeAndJoystickReplay.update();
         TuningMode.periodic();
+        // Before the scheduler, so every subsystem periodic and every command that runs this loop
+        // sees one consistent answer about what the battery can currently afford.
+        PowerBudget.update();
         CommandScheduler.getInstance().run();
         m_robotContainer.updateMechanismTelemetry();
         m_robotContainer.updateSimulation();

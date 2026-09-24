@@ -153,28 +153,201 @@ public final class Constants {
         // MAX Rotations is at maximum height (lower shot)
         // MIN Rotations is at minimum height (higher shot)
 
+        // ---- Flywheel velocity loop ----
+        // kV carries the steady-state voltage, kP rejects what is left. All five are live-tunable
+        // under "Tuning/Flywheel/" — a stiffer loop is the first half of fixing a wheel that sags
+        // when a ball goes through it (the second half is FLYWHEEL_DROOP_* below).
+        //
+        // kA is deliberately NOT a constant here: the voltage it takes to accelerate the wheel is a
+        // property of the wheel's inertia and the motor's winding resistance, not a number worth
+        // guessing at, so it is computed from FLYWHEEL_MOI_KG_M2 — see
+        // ShooterSubsystem.flywheelKaFromMoi(). It only does anything because the flywheel request
+        // is given the setpoint's own rate of change as its acceleration, so a shot that is walking
+        // the setpoint up as the robot backs away gets the extra volts immediately instead of
+        // waiting for kP to notice the wheel falling behind.
         public static final double FLYWHEEL_KP = 0.5;
         public static final double FLYWHEEL_KI = 0;
         public static final double FLYWHEEL_KD = 0;
         public static final double FLYWHEEL_KV = 0.125;
+        // Static friction, in volts. Raise until a wheel commanded to a very low speed just breaks
+        // away instead of sitting still.
+        public static final double FLYWHEEL_KS = 0.0;
 
-        public static final double FLYWHEEL_GEAR_RATIO = 1;
+        // Rotational inertia of the spinning assembly about the LARGE (4 in) flywheel's shaft, in
+        // kg·m² — the large wheel itself plus the small wheel and the rotor reflected through their
+        // gearing. Get it from CAD; it is the one number that decides both how far the wheel sags
+        // when a ball passes through it and how hard the motor has to work to put that speed back,
+        // and doubling it roughly halves the sag. A 4 in, 1 kg wheel on its own is around 0.0013.
+        //
+        // Used in four places: the kA above, the peak acceleration the motor can produce, the
+        // simulation's flywheel model, and the physics seed for the droop compensator — which is
+        // what the robot shoots on before it has measured a single shot of its own. The three that
+        // work in motor units use FLYWHEEL_ROTOR_MOI_KG_M2, the reflected form of this.
+        // TODO: measure from CAD.
+        public static final double FLYWHEEL_MOI_KG_M2 = 0.0013;
+
+        // Mass of one fuel game piece, kg. Only used for the droop seed above.
+        // TODO: weigh one.
+        public static final double FUEL_MASS_KG = 0.145;
+
+        // Of the energy the wheel gives up to a passing ball, the fraction that ends up as ball
+        // kinetic energy. The rest goes into compressing the ball, scrubbing it against the hood,
+        // and heat. Lower means the wheel loses MORE speed per ball than the ball's energy alone
+        // would suggest, so the seeded droop estimate gets bigger.
+        public static final double FLYWHEEL_SHOT_ENERGY_EFFICIENCY = 0.5;
+
+        // ---- Gearing ----
+        // MOTOR rotations per rotation of the LARGE (4 in) flywheel. Greater than 1 is a reduction:
+        // 28/18 trades top speed for torque, which is what keeps the wheel from being dragged down
+        // as far by each ball in the first place.
+        //
+        // Until this was wired into FLYWHEEL_EFFECTIVE_DIAMETER_METERS below, this constant reached
+        // nothing but the simulation — every speed on the real robot was converted straight from
+        // motor RPS through a hand-entered diameter, so changing it did nothing. It is load-bearing
+        // now, and getting it wrong scales every shot in the match.
+        public static final double FLYWHEEL_GEAR_RATIO = 28.0 / 18.0;
+
+        // Rotations of the SMALL (2 in) flywheel per rotation of the LARGE (4 in) one. The two are
+        // geared to each other, not just to the motor, and the difference in their surface speeds
+        // is what puts backspin on the ball.
+        public static final double FLYWHEEL_SMALL_PER_LARGE_RATIO = 18.0 / 28.0;
+
         public static final double FLYWHEEL_LARGE_DIAMETER_METERS = 0.1016; // 4 inches
         public static final double FLYWHEEL_SMALL_DIAMETER_METERS = 0.0508; // 2 inches
-        // Ceiling on the commanded flywheel speed. Sized from the longest shot the robot is
-        // actually asked to make: a shuttle pass from the far side of the opposing alliance zone,
-        // turret ~0.46 m (1.5 ft) off their back wall, driving parallel to that wall at the
-        // drivetrain's full 5.44 m/s. Solved over the whole length of that wall, the worst case
-        // asks for 69.3 RPS — a lateral sprint costs ~8 RPS over the same shot standing still,
-        // because the shooter has to cancel the robot's sideways velocity as well as reach the
-        // target. 80 leaves margin for that number to grow when the drag term (SPEED_PER_METER,
-        // still a first guess) gets tuned up, and is 80% of a Kraken X60's 100 RPS free speed,
-        // which is direct-drive here.
+        // Ceiling on the commanded flywheel speed, in MOTOR RPS. 80 is 80% of a Kraken X60's 100
+        // RPS free speed, which is the real constraint now — the motor cannot hold much past this
+        // under load whatever the number here says.
+        //
+        // This used to be sized off the longest shot the robot is asked to make: a shuttle pass
+        // from the far side of the opposing alliance zone, turret ~0.46 m off their back wall,
+        // driving parallel to that wall at the drivetrain's full 5.44 m/s. That worst case wanted
+        // 69.3 motor RPS when the flywheel was direct-drive, and 80 left comfortable margin.
+        //
+        // The 28:18 reduction changed that. The same shot now needs roughly 1.77x the motor speed —
+        // past the motor's free speed, never mind this ceiling — so the longest shuttle passes are
+        // no longer physically available and the solver will clamp them. That is reported, not
+        // hidden: watch Shooter/Physics/SpeedClamped and Shooter/Physics/Achievable. Shots inside
+        // our own alliance zone are unaffected; they were nowhere near the ceiling before and are
+        // still well under it.
         public static final double FLYWHEEL_MAX_REV_PER_SEC = 80.0;
-        // Effective flywheel diameter used to convert motor RPS to muzzle velocity
-        // for motion compensation flight-time estimation.
-        // raw average: (0.1016 + 0.0508) / 2 = 0.0762m (3 inches)
-        public static final double FLYWHEEL_EFFECTIVE_DIAMETER_METERS = 0.0762;
+        /**
+         * Effective flywheel diameter, in meters, referenced to the MOTOR: the whole of
+         * {@code launchSpeed = π · d · motorRps}. Every speed conversion in the project — the aim
+         * solver, the simulated projectile, the droop seed — goes through this one number, which is
+         * why it carries both gear ratios rather than being a bare wheel size.
+         *
+         * <p>The ball is squeezed between two wheels of different sizes turning at different
+         * speeds, and its centre leaves at the average of the two contact surface speeds (the
+         * difference between them is the backspin). Per rotation of the large wheel that is
+         * {@code (d_large + d_small · smallPerLarge) / 2}, and dividing by the motor reduction
+         * re-references it to motor rotations.
+         *
+         * <p>This used to be the flat average of the two diameters, 0.0762, which silently assumed
+         * both wheels turned at the same speed as the motor. Both assumptions are now false, and
+         * the number is a third smaller as a result.
+         *
+         * <p><b>Consequence of the 28:18 reduction:</b> ball speed per motor rotation dropped by
+         * about 44%, so every entry in {@code flywheelRPSTable} and every shot the physics solver
+         * produces now asks for proportionally more motor RPS. Expect long shuttle passes to run
+         * into {@code FLYWHEEL_MAX_REV_PER_SEC} — the solver reports that honestly as
+         * {@code Shooter/Physics/SpeedClamped}, so watch that row before trusting a long pass.
+         */
+        public static final double FLYWHEEL_EFFECTIVE_DIAMETER_METERS =
+            (FLYWHEEL_LARGE_DIAMETER_METERS
+                + FLYWHEEL_SMALL_DIAMETER_METERS * FLYWHEEL_SMALL_PER_LARGE_RATIO)
+            / 2.0 / FLYWHEEL_GEAR_RATIO;
+
+        /**
+         * The flywheel's inertia as the MOTOR ROTOR feels it, kg·m² — {@code J / G²}.
+         *
+         * <p>A reduction makes the wheel look lighter from the rotor's side by the square of the
+         * ratio, and everything computed against the motor's own velocity signal — kA, the peak
+         * acceleration the motor can produce, the droop seed — needs the reflected figure rather
+         * than the raw one.
+         */
+        public static final double FLYWHEEL_ROTOR_MOI_KG_M2 =
+            FLYWHEEL_MOI_KG_M2 / (FLYWHEEL_GEAR_RATIO * FLYWHEEL_GEAR_RATIO);
+
+        // ---- Shot droop compensation ----
+        // A ball passing through the flywheel takes energy out of it, so the wheel is slower at the
+        // moment the ball separates than it was a few milliseconds earlier — the ball leaves slower
+        // than the aim solution asked for, and during sustained fire the wheel never fully recovers
+        // between balls. FlywheelDroopCompensator watches the velocity signal, measures how far the
+        // wheel actually sags on each shot, learns the average over the match, and biases the
+        // commanded speed up so what the ball sees is what was asked for.
+        //
+        // Everything below is live-tunable under "Tuning/Flywheel/", and everything the compensator
+        // has measured is published under "Shooter/Flywheel/".
+
+        // What is learned is the TROUGH DEFICIT: how far below the commanded setpoint the wheel has
+        // sagged at the instant the ball separates from it. That is the number that decides how
+        // fast the ball actually leaves, and biasing the command up by exactly it puts the trough
+        // on target. It is learned per commanded-speed bin rather than as a single figure, because
+        // the net dip is badly non-linear in speed — the motor's ability to push back during the
+        // contact collapses as it approaches free speed, so near the bottom of the range it
+        // replaces nearly everything the ball takes and near the top almost none of it.
+        //
+        // One deficit subsumes both effects that used to be handled separately: a single ball's
+        // drop, and the deeper trough of the fifth ball in a burst that the wheel never recovered
+        // from. Both are just "how far down was it when the ball left".
+        //
+        // How much of the learned deficit to add back, 0 to 1:
+        //   0.0 — off. The compensator still measures, learns, and publishes; it just doesn't
+        //         change the shot. This is the setting to re-take the lookup tables under.
+        //   1.0 — the default, and the physically correct one: the ball leaves at the wheel's speed
+        //         at separation, so pre-biasing by the full deficit puts separation on target.
+        // Back it off only if shots start going long, which would mean the measured trough is
+        // deeper than the speed the ball really left at.
+        public static final double FLYWHEEL_COMPENSATION_GAIN = 1.0;
+
+        // How far the tracking error has to climb back off a trough before that trough is confirmed
+        // and counted as one ball, in motor RPS. THIS IS THE ONE THAT SEPARATES ONE BALL FROM TWO.
+        //
+        // During rapid fire the wheel climbs only part of the way back between balls — a clear step
+        // up, nowhere near where it started. Waiting for a full return to baseline would read a
+        // whole burst as one long sag and learn nothing from the busiest part of the match; waiting
+        // for a reversal counts each ball on its own.
+        //
+        // Too high and consecutive balls merge into one (symptom: ShotCount lags balls fired, and
+        // LastPerBallDropRps reads implausibly deep). Too low and velocity noise splits one ball
+        // into several (symptom: ShotCount runs ahead of balls fired, LastPerBallDropRps shallow).
+        // Should sit below FLYWHEEL_SHOT_DETECT_DROP_RPS.
+        public static final double FLYWHEEL_SHOT_REBOUND_RPS = 1.0;
+
+        // How much each newly measured ball moves its bin's average, 0 to 1. 0.20 means a ball is
+        // worth a fifth of the estimate, so a bin settles in a handful of balls but a single weird
+        // reading cannot run away with it. The first ball into an empty bin is taken whole.
+        public static final double FLYWHEEL_DROOP_LEARNING_RATE = 0.20;
+
+        // Hard ceiling on the total bias the compensator may add, in motor RPS. This is the guard
+        // that keeps a mis-detection, or a wheel that is voltage-saturated and can never reach its
+        // setpoint, from winding the commanded speed up indefinitely.
+        public static final double FLYWHEEL_MAX_COMPENSATION_RPS = 10.0;
+
+        // How far below the running baseline the velocity has to dip before it counts as a ball
+        // going through, in motor RPS. Too low and encoder noise registers as shots; too high and
+        // real shots are missed. Watch "Shooter/Flywheel/LastPerBallDropRps" against a known number of
+        // balls fired to set it.
+        public static final double FLYWHEEL_SHOT_DETECT_DROP_RPS = 1.5;
+
+        // A measured droop larger than this is thrown away rather than learned from — that is a
+        // stall, a jam, or the flywheel being commanded somewhere new, not a ball.
+        public static final double FLYWHEEL_MAX_PLAUSIBLE_DROOP_RPS = 25.0;
+
+        // How close the wheel has to be to its setpoint to count as up to speed, in motor RPS.
+        // Published as "Shooter/Flywheel/AtSpeed", and the detector will not look for shots until
+        // the wheel has reached speed at least once, so spin-up is never mistaken for a shot.
+        public static final double FLYWHEEL_AT_SPEED_TOLERANCE_RPS = 1.0;
+
+        // Below this commanded speed the compensator does nothing at all — the wheel is parked or
+        // on its way there, and neither is a state where a shot can be measured.
+        public static final double FLYWHEEL_MIN_DETECT_RPS = 10.0;
+
+        // The aim solution moves the setpoint continuously as the robot drives, and a setpoint
+        // stepping upward looks exactly like a shot from the velocity signal's point of view. Any
+        // shot detected while the setpoint is slewing faster than this (motor RPS per second) is
+        // discarded. Ordinary aim tracking moves it by a few RPS/s.
+        public static final double FLYWHEEL_MAX_SETPOINT_SLEW_RPS_PER_SEC = 25.0;
 
         // Ball launch position relative to robot center
         // X: forward offset (meters, positive = toward robot front)
@@ -345,11 +518,49 @@ public final class Constants {
         //   Smaller (0.1) = trust the wheels more: less drift, back toward plain wheel odometry.
         public static final double WHEEL_TRUST_TAU_SECONDS = 0.15;
 
-        // Accelerometer bias learning rate. The residual between the IMU-integrated velocity and
-        // wheel odometry is integrated into a per-axis bias estimate that gets subtracted from raw
-        // acceleration. This is what stops a long straight from slowly drifting.
+        // Accelerometer bias learning rate, per second, as the gain of a first-order tracker.
+        // Learning only ever runs while the robot is standing still, because that is the only time
+        // the observation is clean: the true acceleration is known to be zero, so whatever the
+        // accelerometer reports is bias by definition. 0.20 gives a ~5 s time constant, which the
+        // robot has many times over during a match.
         // Set to 0 to disable bias learning entirely (pure complementary filter).
+        //
+        // This deliberately does NOT learn from the wheel-vs-IMU residual while driving. That
+        // residual is dominated by transients — wheel slip, weight transfer tipping the
+        // accelerometer so a little gravity leaks into its horizontal axes — none of which are
+        // bias, and integrating them is windup: the filter's steady-state velocity error is the
+        // accelerometer error times WHEEL_TRUST_TAU_SECONDS, so a bias wound up during a hard stop
+        // becomes a phantom velocity that lingers after the robot has stopped. Drift on a long
+        // straight is already bounded by the wheel correction, which is what that term is for.
         public static final double ACCEL_BIAS_GAIN = 0.20;
+
+        // Hard bound on the learned bias, m/s^2. A real MEMS accelerometer offset is a few tenths;
+        // anything past this is a fault or a bad observation, and should not be allowed to steer
+        // the integrator.
+        public static final double ACCEL_BIAS_MAX_MPS2 = 1.0;
+
+        // ---- Standstill detection (zero-velocity update) ----
+        // Integrating an accelerometer has no way to discover on its own that the robot has stopped:
+        // every scrap of error accumulated during the stop just sits in the estimate and washes out
+        // over WHEEL_TRUST_TAU_SECONDS, which is a shooter still leading a target the robot is no
+        // longer moving toward. Wheel odometry does know, and at a standstill it is exactly right —
+        // a swerve's wheels cannot read zero while the chassis is still translating. So when the
+        // wheels have read stopped for a moment, the estimate is snapped to zero outright.
+        //
+        // Below this wheel-derived chassis speed the robot counts as stopped. Above carpet noise,
+        // well below any speed worth compensating a shot for.
+        public static final double ZERO_VELOCITY_WHEEL_SPEED_MPS = 0.10;
+
+        // How long the wheels must agree they are stopped before the estimate is snapped. This is
+        // what keeps a genuine four-wheel skid — wheels braked to a halt while the robot is still
+        // sliding — from being mistaken for a standstill.
+        public static final double ZERO_VELOCITY_DWELL_SECONDS = 0.10;
+
+        // Bias learning additionally requires the robot not be spinning. A robot pivoting in place
+        // is standing still by the definition above (its center isn't going anywhere), but the
+        // Pigeon is mounted off-center, so what it reports there is mostly centripetal acceleration
+        // that the estimator has had to subtract off — not a clean look at the sensor's offset.
+        public static final double ZERO_VELOCITY_YAW_RATE_RAD_PER_SEC = 0.20;
 
         // Vision correction: velocity derived by differentiating the vision-fused pose over
         // VISION_SAMPLE_WINDOW_SECONDS. Slow and noisy, but unbiased — it catches systematic wheel
@@ -527,6 +738,80 @@ public final class Constants {
 
 
         public static final double PIVOT_FORCE_DOWN_POWER = 0;
+    }
+
+    /**
+     * What gets sacrificed when the battery starts to fold, and in what order.
+     *
+     * <p>The robot cannot have everything it wants from a sagging battery, so rather than letting
+     * the RoboRIO's own brownout protection decide — it cuts everything at once, flywheel included —
+     * this states a priority up front and enforces it before the RIO ever has to:
+     *
+     * <ul>
+     *   <li><b>Never reduced:</b> the flywheel, the rack, the turret rotator, and the turret's
+     *       feeder. A shot that leaves slow is a wasted ball and a wasted cycle, and a turret that
+     *       is not where the solution says it is makes every shot after it wrong too.
+     *   <li><b>Reduced first:</b> the ground intake's rollers and indexers. Picking fuel up more
+     *       slowly costs a little cycle time and nothing else.
+     *   <li><b>Reduced second:</b> the swerve drive, by scaling the driver's speed command. Teleop
+     *       only — autonomous is left alone, because a path follower that is quietly speed-limited
+     *       does not drive the path slower, it drives it wrong.
+     * </ul>
+     *
+     * <p>Tiers are hysteretic and have a minimum dwell, so the hard current spike from a full-speed
+     * launch cannot strobe the robot in and out of protection. The whole thing can be switched off
+     * mid-match from the dashboard — see {@code PowerBudget.ENABLED}.
+     */
+    public static final class PowerConstants {
+        // ---- Tier thresholds, in volts at the RoboRIO input ----
+        // Entry is lower than exit so the tier has to be clearly left, not just brushed. For
+        // reference, the RoboRIO's own brownout cutoff is 6.3 V and its warning trips at 6.8 V —
+        // these sit well above both, because the point is to never get there.
+        public static final double REDUCED_ENTER_VOLTS  = 9.5;
+        public static final double REDUCED_EXIT_VOLTS   = 10.3;
+        public static final double CRITICAL_ENTER_VOLTS = 8.5;
+        public static final double CRITICAL_EXIT_VOLTS  = 9.3;
+
+        // Battery voltage is noisy enough that a single sample means very little; this is the time
+        // constant of the low-pass the thresholds are actually compared against. Long enough to
+        // ignore the spike from a module reversing direction, short enough to react inside the
+        // second or so a real sag takes to become a brownout.
+        public static final double VOLTAGE_FILTER_TAU_SECONDS = 0.08;
+
+        // Once a tier is entered it is held at least this long, even if the voltage recovers
+        // immediately. Without it, cutting the intake raises the voltage, which restores the intake,
+        // which drops the voltage — at loop rate.
+        public static final double MIN_TIER_HOLD_SECONDS = 0.75;
+
+        // ---- Drive authority per tier, as a multiplier on the driver's commanded speed ----
+        public static final double NORMAL_DRIVE_SCALE   = 1.0;
+        public static final double REDUCED_DRIVE_SCALE  = 0.55;
+        public static final double CRITICAL_DRIVE_SCALE = 0.30;
+
+        // ---- Intake roller/indexer authority per tier, as a multiplier on commanded output ----
+        // Critical is 0: the intake stops entirely rather than browning the robot out to keep
+        // collecting fuel it has no power to shoot. The pivot is NOT scaled — it has to hold its
+        // position against gravity, and an intake arm falling onto the carpet mid-match is its own
+        // problem.
+        public static final double NORMAL_INTAKE_SCALE   = 1.0;
+        public static final double REDUCED_INTAKE_SCALE  = 0.40;
+        public static final double CRITICAL_INTAKE_SCALE = 0.0;
+
+        // ---- Intake roller/indexer current limits per tier, in amps ----
+        // Output scaling alone is not enough: a stalled roller at 40% output still pulls whatever
+        // the stator limit allows. These are applied to the roller and both indexers on a tier
+        // change only, never per loop. NORMAL restores each motor's own configured limits rather
+        // than a shared number, so this table only needs the reduced cases.
+        public static final double REDUCED_INTAKE_SUPPLY_AMPS  = 15.0;
+        public static final double REDUCED_INTAKE_STATOR_AMPS  = 35.0;
+        public static final double CRITICAL_INTAKE_SUPPLY_AMPS = 5.0;
+        public static final double CRITICAL_INTAKE_STATOR_AMPS = 10.0;
+
+        // Jam detection compares roller stator current against ROLLER_STALL_CURRENT_AMPS, which a
+        // roller cannot reach once its stator limit has been pulled below it — the detector would
+        // go quiet exactly when jams are most likely. So while a reduced limit is in force the
+        // threshold drops to this fraction of it instead.
+        public static final double STALL_THRESHOLD_FRACTION_OF_LIMIT = 0.8;
     }
 
     public static final class LEDConstants {
