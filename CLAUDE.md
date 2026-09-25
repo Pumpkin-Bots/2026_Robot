@@ -112,8 +112,8 @@ also lowers the jam-detection threshold to match, so detection doesn't go silent
 Both systems are fully live-tunable under `Tuning/Power/` and `Tuning/Flywheel/`, gated behind
 `Tuning/TuningModeEnabled` like every other `TunableDouble`. The two operator switches
 (`Power/BrownoutProtectionEnabled`, `Shooter/HoldFeedUntilAtSpeed`) are `DashboardToggle`s and are
-live at all times. See `docs/POWER_AND_FLYWHEEL_TUNING.md` for what each knob is for and when to
-reach for it.
+live at all times. See `docs/TUNING_GUIDE.md` for the order to tune everything in, the exit test for
+each stage, and an index of every knob with its default.
 
 ### Field-Position Logic
 `ShooterMode` decides what to do every loop from where the **shooter's launch point** is (not the

@@ -132,6 +132,22 @@ public class ShooterSubsystem implements Subsystem {
     private double m_appliedTurretKV = Constants.ShooterConstants.ROTATOR_KV;
     private double m_appliedTurretKS = Constants.ShooterConstants.ROTATOR_KS;
 
+    // ---- Live PID tuning, rack ----
+    // The rack carries the launch angle, so a loop that undershoots its commanded angle is an aiming
+    // error that looks exactly like a bad physics calibration — and chasing the calibration when the
+    // mechanism is the problem wastes a whole test session. Watch "Shooter/Physics/RackErrorDeg"
+    // while tuning these: it should settle to near zero well before a shot is taken.
+    private final TunableDouble m_rackKP =
+        new TunableDouble("Tuning/Rack/kP", Constants.ShooterConstants.RACK_KP);
+    private final TunableDouble m_rackKI =
+        new TunableDouble("Tuning/Rack/kI", Constants.ShooterConstants.RACK_KI);
+    private final TunableDouble m_rackKD =
+        new TunableDouble("Tuning/Rack/kD", Constants.ShooterConstants.RACK_KD);
+
+    private double m_appliedRackKP = Constants.ShooterConstants.RACK_KP;
+    private double m_appliedRackKI = Constants.ShooterConstants.RACK_KI;
+    private double m_appliedRackKD = Constants.ShooterConstants.RACK_KD;
+
     // ---- Live PID tuning, flywheel ----
     // Same mechanism as the turret's above. These matter more than they look: how quickly the
     // velocity loop puts back the speed a ball took out of the wheel is half of what decides
@@ -1102,7 +1118,22 @@ public class ShooterSubsystem implements Subsystem {
         publishTiltTelemetry();
 
         applyTurretGains();
+        applyRackGains();
         applyFlywheelGains();
+    }
+
+    /** The same re-apply-on-change as the turret's, for the rack's position loop. */
+    private void applyRackGains() {
+        double kP = m_rackKP.get();
+        double kI = m_rackKI.get();
+        double kD = m_rackKD.get();
+        if (kP != m_appliedRackKP || kI != m_appliedRackKI || kD != m_appliedRackKD) {
+            m_appliedRackKP = kP;
+            m_appliedRackKI = kI;
+            m_appliedRackKD = kD;
+            m_shooterRackMotor.getConfigurator().apply(
+                new Slot0Configs().withKP(kP).withKI(kI).withKD(kD));
+        }
     }
 
     /**
