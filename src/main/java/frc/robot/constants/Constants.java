@@ -125,10 +125,10 @@ public final class Constants {
         // one fighting the chain. Positive assists CCW (increasing turret angle), negative assists
         // CW — so the sign picks the direction and the magnitude is the voltage.
         // Tunable live as Tuning/Turret/kFF. Start at 0 and raise until the lag closes.
-        public static final double ROTATOR_KFF = -0.3;
+        public static final double ROTATOR_KFF = 0;
         // Below this commanded turret rate the term is held off, so it does not creep the turret
         // while it is trying to sit still. Deg/s of turret travel.
-        public static final double ROTATOR_KFF_DEADBAND_DEG_PER_SEC = 2;
+        public static final double ROTATOR_KFF_DEADBAND_DEG_PER_SEC = 0;
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
@@ -165,7 +165,7 @@ public final class Constants {
         // is given the setpoint's own rate of change as its acceleration, so a shot that is walking
         // the setpoint up as the robot backs away gets the extra volts immediately instead of
         // waiting for kP to notice the wheel falling behind.
-        public static final double FLYWHEEL_KP = 0.5;
+        public static final double FLYWHEEL_KP = 0.4;
         public static final double FLYWHEEL_KI = 0;
         public static final double FLYWHEEL_KD = 0;
         public static final double FLYWHEEL_KV = 0.125;
@@ -322,7 +322,7 @@ public final class Constants {
         // Hard ceiling on the total bias the compensator may add, in motor RPS. This is the guard
         // that keeps a mis-detection, or a wheel that is voltage-saturated and can never reach its
         // setpoint, from winding the commanded speed up indefinitely.
-        public static final double FLYWHEEL_MAX_COMPENSATION_RPS = 10.0;
+        public static final double FLYWHEEL_MAX_COMPENSATION_RPS = 20.0;
 
         // How far below the running baseline the velocity has to dip before it counts as a ball
         // going through, in motor RPS. Too low and encoder noise registers as shots; too high and
@@ -388,12 +388,12 @@ public final class Constants {
         //   SPEED_PER_METER   — extra m/s added per meter of distance. Fixes "close shots are
         //                       right but long shots fall short" (that's air drag).
         public static final double SPEED_SCALAR_DEFAULT    = 1.0;
-        public static final double SPEED_PER_METER_DEFAULT = 0.35;
+        public static final double SPEED_PER_METER_DEFAULT = 0;
 
         // (4) Final flywheel trim in motor RPS, applied after the speed→RPS conversion. Use this
         // for a small constant bias (e.g. ball compression losses at the exit roller) rather than
         // distorting FLYWHEEL_EFFECTIVE_DIAMETER_METERS, which also affects the sim projectile.
-        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = 2;
+        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = 0;
 
         // (5) Shoot-on-the-move authority, 0 to 1. 1.0 = fully compensate for robot velocity,
         // 0.0 = ignore it entirely (aim as if stopped). Set to 0 to isolate a stationary aiming
@@ -767,10 +767,10 @@ public final class Constants {
         // Entry is lower than exit so the tier has to be clearly left, not just brushed. For
         // reference, the RoboRIO's own brownout cutoff is 6.3 V and its warning trips at 6.8 V —
         // these sit well above both, because the point is to never get there.
-        public static final double REDUCED_ENTER_VOLTS  = 9.5;
-        public static final double REDUCED_EXIT_VOLTS   = 10.3;
-        public static final double CRITICAL_ENTER_VOLTS = 8.5;
-        public static final double CRITICAL_EXIT_VOLTS  = 9.3;
+        public static final double REDUCED_ENTER_VOLTS  = 8.25;
+        public static final double REDUCED_EXIT_VOLTS   = 8.75;
+        public static final double CRITICAL_ENTER_VOLTS = 7.75;
+        public static final double CRITICAL_EXIT_VOLTS  = 8.25;
 
         // Battery voltage is noisy enough that a single sample means very little; this is the time
         // constant of the low-pass the thresholds are actually compared against. Long enough to
