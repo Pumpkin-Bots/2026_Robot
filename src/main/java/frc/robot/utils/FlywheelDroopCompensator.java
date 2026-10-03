@@ -83,6 +83,14 @@ import frc.robot.constants.Constants.ShooterConstants;
  * <p>Inert in simulation. maple-sim's projectiles leave at exactly the wheel's speed — there is no
  * ball-versus-wheel interaction to lose energy to — so there is no droop to compensate, and biasing
  * the speed up there would simply make every simulated shot overshoot.
+ *
+ * <h2>Across reboots</h2>
+ *
+ * <p>The bins are saved to the roboRIO and reloaded at boot — see {@link FlywheelDroopStore}. What
+ * the wheel does to a ball does not reset when the robot does, so a curve bought with a hopper of
+ * practice balls is still correct after the power cycle between matches, and the alternative is
+ * starting every match back on the physics seed. Saves are queued after a burst of shooting
+ * settles, and forced whenever the robot is disabled.
  */
 public class FlywheelDroopCompensator {
 
@@ -129,6 +137,21 @@ public class FlywheelDroopCompensator {
      */
     private static final double MAX_DESCENT_SECONDS = 0.25;
 
+    /** How often the store is asked whether it has anything to do, seconds. */
+    private static final double STORE_SERVICE_PERIOD_SECONDS = 1.0;
+
+    /**
+     * Shortest gap between two automatic saves, seconds. The file is tiny and the write is off the
+     * robot thread, but there is no sense writing flash once per ball when the curve barely moves.
+     */
+    private static final double AUTOSAVE_MIN_INTERVAL_SECONDS = 20.0;
+
+    /**
+     * Quiet time after the last ball before an automatic save, seconds. Saving between cycles rather
+     * than during one keeps the write well away from the shots it is recording.
+     */
+    private static final double AUTOSAVE_QUIET_SECONDS = 2.0;
+
     private final TunableDouble m_compensationGain = new TunableDouble(
         "Tuning/Flywheel/CompensationGain", ShooterConstants.FLYWHEEL_COMPENSATION_GAIN);
     private final TunableDouble m_learningRate = new TunableDouble(
@@ -160,6 +183,36 @@ public class FlywheelDroopCompensator {
 
     /** Fallback until a single ball has been measured — see {@link #physicsSeedFraction()}. */
     private final double m_seedFraction;
+
+    // ---- Curve telemetry, built once ----
+    // Bin centres and their dashboard keys never change, and the publish buffers are reused rather
+    // than reallocated, so publishing the whole curve at 50 Hz allocates nothing.
+
+    /** One key per bin, named for the speed range it covers — see {@link #publishCurve()}. */
+    private static final String[] BIN_KEYS = new String[BIN_COUNT];
+    private static final double[] BIN_CENTERS = new double[BIN_COUNT];
+
+    /** Speeds the effective-compensation curve is sampled at, for an XY plot. */
+    private static final double CURVE_SAMPLE_STEP_RPS = 5.0;
+    private static final int CURVE_SAMPLE_COUNT =
+        (int) Math.floor(ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC / CURVE_SAMPLE_STEP_RPS) + 1;
+    private static final double[] CURVE_SAMPLE_RPS = new double[CURVE_SAMPLE_COUNT];
+
+    static {
+        for (int bin = 0; bin < BIN_COUNT; bin++) {
+            BIN_CENTERS[bin] = (bin + 0.5) * BIN_WIDTH_RPS;
+            BIN_KEYS[bin] = String.format(
+                "Shooter/Flywheel/Bins/%02d-%02dRps",
+                (int) (bin * BIN_WIDTH_RPS), (int) ((bin + 1) * BIN_WIDTH_RPS));
+        }
+        for (int i = 0; i < CURVE_SAMPLE_COUNT; i++) {
+            CURVE_SAMPLE_RPS[i] = i * CURVE_SAMPLE_STEP_RPS;
+        }
+    }
+
+    private final double[] m_curveDeficitRps = new double[BIN_COUNT];
+    private final double[] m_curveSamples = new double[BIN_COUNT];
+    private final double[] m_curveCompensationRps = new double[CURVE_SAMPLE_COUNT];
 
     // ---- Most recent ball, for telemetry ----
     private double m_lastTroughDeficitRps = 0.0;
@@ -196,8 +249,62 @@ public class FlywheelDroopCompensator {
     private double m_lastUpdateTime = -1.0;
     private double m_lastPublishTime = Double.NEGATIVE_INFINITY;
 
+    // ---- Persistence ----
+    private final FlywheelDroopStore m_store = new FlywheelDroopStore();
+    private boolean m_dirty = false;
+    private double m_lastSaveTime = Double.NEGATIVE_INFINITY;
+    private double m_lastStoreServiceTime = Double.NEGATIVE_INFINITY;
+
+    /**
+     * Wipes the saved curve as well as the live one. A momentary switch — it is put back to false as
+     * soon as it has been acted on, so a press cannot leave the robot unable to learn.
+     *
+     * <p>This is the switch to use after changing a flywheel wheel, a belt, or anything else the
+     * {@link FlywheelDroopStore#signature} cannot see. Geometry changes in code invalidate the file
+     * by themselves; a worn wheel swapped for a fresh one does not.
+     */
+    private final DashboardToggle m_clearLearned =
+        new DashboardToggle("Shooter/Flywheel/ClearLearned", false);
+
     public FlywheelDroopCompensator() {
         m_seedFraction = RobotBase.isSimulation() ? 0.0 : physicsSeedFraction();
+        restoreFromStore();
+    }
+
+    /** The current mechanism's store signature — what makes a saved curve applicable or not. */
+    private static String storeSignature() {
+        return FlywheelDroopStore.signature(
+            BIN_WIDTH_RPS,
+            ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
+            ShooterConstants.FLYWHEEL_GEAR_RATIO,
+            ShooterConstants.FLYWHEEL_EFFECTIVE_DIAMETER_METERS,
+            ShooterConstants.FLYWHEEL_ROTOR_MOI_KG_M2,
+            ShooterConstants.FUEL_MASS_KG);
+    }
+
+    /**
+     * Loads last session's bins, if there are any that still apply to this shooter.
+     *
+     * <p>The sample counts come back with them, but only to mark which bins are populated: the
+     * learning rate is a fixed alpha rather than {@code 1/n}, so a restored bin keeps adapting at
+     * exactly the same rate a freshly measured one would. Yesterday's curve is a starting point, not
+     * a weight that new balls have to fight.
+     */
+    private void restoreFromStore() {
+        FlywheelDroopStore.Persisted saved = m_store.load(storeSignature(), BIN_COUNT);
+        if (saved == null) {
+            return;
+        }
+
+        for (int bin = 0; bin < BIN_COUNT; bin++) {
+            if (saved.samples[bin] <= 0) {
+                continue;
+            }
+            m_binDeficitRps[bin] = saved.deficitRps[bin];
+            m_binSamples[bin] = saved.samples[bin];
+            m_deficitBySpeed.put(binCenterRps(bin), m_binDeficitRps[bin]);
+            m_haveAnyBin = true;
+        }
     }
 
     /**
@@ -258,6 +365,8 @@ public class FlywheelDroopCompensator {
         double dutyAlpha = dt / (DUTY_FILTER_TAU_SECONDS + dt);
         m_filteredDuty += dutyAlpha * (Math.abs(dutyCycle) - m_filteredDuty);
         m_saturated = m_filteredDuty >= SATURATION_DUTY_CYCLE;
+
+        serviceStore(now);
 
         if (setpointRps < m_minDetectRps.get()) {
             // Parked, or on the way there. Nothing measurable happens below this speed.
@@ -396,6 +505,48 @@ public class FlywheelDroopCompensator {
         m_binSamples[bin]++;
         m_deficitBySpeed.put(binCenterRps(bin), m_binDeficitRps[bin]);
         m_haveAnyBin = true;
+        m_dirty = true;
+    }
+
+    /**
+     * Handles the saved copy: honours a clear request, and writes the curve out once shooting has
+     * settled. Runs at {@link #STORE_SERVICE_PERIOD_SECONDS} rather than at sample rate — none of it
+     * needs to be prompt, and the detector's 200 Hz budget is not the place to poll NetworkTables.
+     */
+    private void serviceStore(double now) {
+        if (now - m_lastStoreServiceTime < STORE_SERVICE_PERIOD_SECONDS) {
+            return;
+        }
+        m_lastStoreServiceTime = now;
+
+        if (m_clearLearned.get()) {
+            m_clearLearned.set(false);
+            reset();
+            return;
+        }
+
+        boolean quiet = now - m_lastBallTime >= AUTOSAVE_QUIET_SECONDS;
+        boolean dueForSave = now - m_lastSaveTime >= AUTOSAVE_MIN_INTERVAL_SECONDS;
+        if (m_dirty && quiet && dueForSave) {
+            save(now);
+        }
+    }
+
+    /**
+     * Writes the curve out now if anything has been learned since the last write. Call this from
+     * {@code disabledInit()} — the gap between matches is exactly when the robot gets power-cycled,
+     * and it is the one moment where a save is certain to be both wanted and free.
+     */
+    public void saveIfDirty() {
+        if (m_dirty) {
+            save(Timer.getFPGATimestamp());
+        }
+    }
+
+    private void save(double now) {
+        m_store.save(m_binDeficitRps, m_binSamples, m_shotCount, storeSignature());
+        m_dirty = false;
+        m_lastSaveTime = now;
     }
 
     private static int binFor(double setpointRps) {
@@ -549,6 +700,30 @@ public class FlywheelDroopCompensator {
         return m_lastContactSeconds;
     }
 
+    /** Commanded speed at the middle of each learning bin, motor RPS — the curve's x axis. */
+    public double[] getBinCenterRps() {
+        double[] centers = new double[BIN_COUNT];
+        for (int bin = 0; bin < BIN_COUNT; bin++) {
+            centers[bin] = binCenterRps(bin);
+        }
+        return centers;
+    }
+
+    /** Learned trough deficit in each bin, motor RPS. Zero where nothing has been measured yet. */
+    public double[] getBinDeficitRps() {
+        return java.util.Arrays.copyOf(m_binDeficitRps, BIN_COUNT);
+    }
+
+    /** Balls measured in each bin. Zero means that bin's deficit is a placeholder, not a number. */
+    public int[] getBinSamples() {
+        return java.util.Arrays.copyOf(m_binSamples, BIN_COUNT);
+    }
+
+    /** True if a saved curve from a previous boot was found and accepted. */
+    public boolean wasRestoredFromDisk() {
+        return m_store.wasLoaded();
+    }
+
     /** Number of speed bins that have at least one measured ball in them. */
     public int getPopulatedBinCount() {
         int populated = 0;
@@ -561,9 +736,15 @@ public class FlywheelDroopCompensator {
     }
 
     /**
-     * Throws away everything learned and goes back to the physics seed. Nothing calls this
-     * automatically — what the robot learns in autonomous is still true in teleop, and carrying the
-     * estimate across a whole match is the entire point.
+     * Throws away everything learned and goes back to the physics seed, <b>including the saved
+     * copy</b> — a reset that left the file behind would quietly undo itself at the next boot, which
+     * is not what anyone means by reset.
+     *
+     * <p>Nothing calls this automatically. What the robot learns in autonomous is still true in
+     * teleop, and carrying the estimate across a whole match — and now across the power cycle before
+     * the next one — is the entire point. It is here for the dashboard's
+     * {@code Shooter/Flywheel/ClearLearned} switch, for when the hardware has changed underneath the
+     * numbers.
      */
     public void reset() {
         java.util.Arrays.fill(m_binDeficitRps, 0.0);
@@ -580,6 +761,8 @@ public class FlywheelDroopCompensator {
         m_compensationRps = 0.0;
         m_armed = false;
         m_falling = false;
+        m_dirty = false;
+        m_store.clear();
     }
 
     /**
@@ -621,5 +804,43 @@ public class FlywheelDroopCompensator {
         SmartDashboard.putBoolean("Shooter/Flywheel/AtSpeed", m_atSpeed);
         SmartDashboard.putBoolean("Shooter/Flywheel/Falling", m_falling);
         SmartDashboard.putBoolean("Shooter/Flywheel/Saturated", m_saturated);
+
+        publishCurve();
+
+        SmartDashboard.putBoolean("Shooter/Flywheel/Store/Restored", m_store.wasLoaded());
+        SmartDashboard.putString("Shooter/Flywheel/Store/Status", m_store.status());
+        SmartDashboard.putBoolean("Shooter/Flywheel/Store/Unsaved", m_dirty);
+    }
+
+    /**
+     * Publishes the learned curve two ways, because the two dashboards want opposite things.
+     *
+     * <p>Elastic graphs a number against <i>time</i> and has no XY plot, so each bin also goes out
+     * under its own key: drop the whole {@code Bins/} folder onto one graph widget and what you are
+     * watching is every bin converging, live, during a practice session — which is the view that
+     * tells you whether the compensator has learned anything yet and where it still has holes.
+     *
+     * <p>AdvantageScope and Glass do plot one array against another, and for those the same data
+     * goes out as {@code Curve/} arrays, which draw the actual deficit-versus-speed shape. {@code
+     * Curve/CompensationRps} is the one to trust for "what will the robot really add" — it is the
+     * post-gain, post-clamp, post-extrapolation number, sampled across the usable speed range, so it
+     * shows the clamp biting and the extrapolation running off the end of the measured bins.
+     */
+    private void publishCurve() {
+        for (int bin = 0; bin < BIN_COUNT; bin++) {
+            SmartDashboard.putNumber(BIN_KEYS[bin], m_binDeficitRps[bin]);
+            m_curveDeficitRps[bin] = m_binDeficitRps[bin];
+            m_curveSamples[bin] = m_binSamples[bin];
+        }
+        SmartDashboard.putNumberArray("Shooter/Flywheel/Curve/BinCenterRps", BIN_CENTERS);
+        SmartDashboard.putNumberArray("Shooter/Flywheel/Curve/BinDeficitRps", m_curveDeficitRps);
+        SmartDashboard.putNumberArray("Shooter/Flywheel/Curve/BinSamples", m_curveSamples);
+
+        for (int i = 0; i < CURVE_SAMPLE_COUNT; i++) {
+            m_curveCompensationRps[i] = compensationRps(CURVE_SAMPLE_RPS[i]);
+        }
+        SmartDashboard.putNumberArray("Shooter/Flywheel/Curve/SampleRps", CURVE_SAMPLE_RPS);
+        SmartDashboard.putNumberArray(
+            "Shooter/Flywheel/Curve/CompensationRps", m_curveCompensationRps);
     }
 }

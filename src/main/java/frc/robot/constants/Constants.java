@@ -400,6 +400,26 @@ public final class Constants {
         // problem from a motion-compensation problem, then walk it back up.
         public static final double SHOOT_ON_THE_MOVE_GAIN = 1.0;
 
+        // (5b) Which joint pays for that compensation. On — the default — the solver picks the arc
+        // whose required launch speed is the speed the flywheel would be held at standing in the
+        // same spot, so the rack swings and the flywheel command is left tracking distance alone.
+        // That is worth doing because the rack moves a few degrees in a fraction of the time a
+        // loaded flywheel takes to move a few RPS, and the correction changes as fast as the
+        // driver's sticks. Off, the arc is fixed first and the flywheel absorbs everything.
+        //
+        // The correction is only ever taken by STEEPENING the arc — flattening is the mirror trade
+        // and the geometry makes it nearly worthless, see AimSolver — so driving away from the
+        // target the flywheel still has to spin up, and Shooter/Physics/MotionRackSaturated says
+        // when that is the case.
+        //
+        // The ceiling bounds how far the arc may be steepened past the policy's angle, in degrees
+        // of launch elevation. What it protects is hang time: a much steeper shot is in the air
+        // longer, which is longer for the robot's own velocity estimate to have been wrong by. 20
+        // degrees is wider than the rack's whole travel, i.e. effectively off; lower it if moving
+        // shots start arriving late and scattered while the stationary ones are still good.
+        public static final boolean MOTION_RACK_FIRST = true;
+        public static final double MOTION_RACK_MAX_SWING_DEG = 20.0;
+
         // (6) Tilt compensation. The turret yaws about the chassis's vertical axis and the rack
         // elevates from the chassis's plane, so a robot with a wheel up on the depot or a corner on
         // the bump is aiming in a frame that is tipped over relative to the field. The solver

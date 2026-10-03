@@ -5,6 +5,7 @@ import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.SoftwareLimitSwitchConfigs;
+import com.ctre.phoenix6.controls.CoastOut;
 import com.ctre.phoenix6.controls.NeutralOut;
 import com.ctre.phoenix6.controls.PositionVoltage;
 import com.ctre.phoenix6.controls.StaticBrake;
@@ -88,8 +89,40 @@ public class ShooterSubsystem implements Subsystem {
      * not achievable at this gearing.
      */
     private final StatusSignal<Double> m_flywheelDutyCycle;
+
+    /**
+     * Whether the flywheel motor holds a Phoenix Pro license, published as
+     * {@code Shooter/Flywheel/FocActive}.
+     *
+     * <p>FOC is requested on every control in this subsystem, but requesting it is not the same as
+     * getting it: an unlicensed TalonFX falls back to trapezoidal commutation and raises
+     * {@code Fault_UnlicensedFeatureInUse} rather than refusing the request. Without this readout
+     * "we enabled FOC" and "FOC is running" are indistinguishable from the driver station, which is
+     * how a licensing problem gets misdiagnosed as a tuning problem.
+     */
+    private final StatusSignal<Boolean> m_flywheelProLicensed;
     // Reused rather than reallocated per loop; the acceleration field is refilled each call.
-    private final VelocityVoltage m_flywheelRequest = new VelocityVoltage(0).withSlot(0);
+    //
+    // withEnableFOC(true) is stated rather than left to the default — see the note on
+    // flywheelGains about what an "FOC conversion" must not touch. Phoenix 6 already defaults
+    // EnableFOC to true on every *Voltage and *DutyCycle request, so this is documentation of
+    // intent, not a behaviour change: the wheel spins exactly as fast as it did before.
+    private final VelocityVoltage m_flywheelRequest =
+        new VelocityVoltage(0).withSlot(0).withEnableFOC(true);
+
+    // What a flywheel command of zero actually sends. Reused for the same no-allocation reason as
+    // the requests above, and carries no FOC flag because there is no commutation to do when no
+    // current is being asked for. See setShooterFlywheelVelocity.
+    private final CoastOut m_flywheelCoastRequest = new CoastOut();
+
+    // Turret and rack position requests, reused for the same reasons as the flywheel's: FOC stated
+    // explicitly, and no per-loop allocation. Both velocity and feedForward are refilled on every
+    // call — including with zeros on the paths that do not use them — because a reused request keeps
+    // whatever was last written to it, and a stale feedforward would quietly push the mechanism.
+    private final PositionVoltage m_turretRequest =
+        new PositionVoltage(0).withSlot(0).withEnableFOC(true);
+    private final PositionVoltage m_rackRequest =
+        new PositionVoltage(0).withSlot(0).withEnableFOC(true);
 
     // ---- Simulation ----
     // The turret and rack skip physics simulation entirely and just snap their simulated
@@ -226,6 +259,29 @@ public class ShooterSubsystem implements Subsystem {
         kFlywheelGearbox.stallTorqueNewtonMeters
         / (2.0 * Math.PI * Constants.ShooterConstants.FLYWHEEL_ROTOR_MOI_KG_M2);
 
+    /**
+     * Flywheel velocity gains, <b>in volts</b>.
+     *
+     * <p>This is the single thing an "enable FOC everywhere" change must not disturb, and it is
+     * worth being explicit about why. FOC is a commutation mode: it is a flag on the control
+     * request, orthogonal to the units the request is expressed in, and Phoenix 6 turns it on by
+     * default for every {@code *Voltage} and {@code *DutyCycle} request. Nothing about enabling it
+     * changes what these numbers mean, and nothing about it can make a shot leave slower — FOC
+     * raises peak torque, it does not lower it.
+     *
+     * <p>What <i>does</i> make the shot leave far too slow is reaching for FOC by swapping the
+     * request to the {@code *TorqueCurrentFOC} family, because that family's output — and therefore
+     * every gain in this slot — is reinterpreted from volts to <b>amps</b>. kV 0.125 stops meaning
+     * "0.125 V per rotation/s" and starts meaning "0.125 A per rotation/s", so the feedforward
+     * holding a 40 RPS shot drops from 5 volts to 5 amps, kP 0.4 goes from 0.4 V to 0.4 A per RPS
+     * of error, and the wheel creeps along at a fraction of its commanded speed. The symptom is a
+     * shot that looks weak everywhere, with {@code Shooter/Flywheel/VelocityRps} sitting well under
+     * {@code SetpointRps} and the duty cycle nowhere near saturated.
+     *
+     * <p>So: FOC is requested explicitly on every request in this subsystem, and every request
+     * stays in the voltage family. If someone does want torque-current control later, these gains
+     * have to be re-characterised in amps from scratch — they do not carry over.
+     */
     private static final Slot0Configs flywheelGains = new Slot0Configs()
         .withKP(Constants.ShooterConstants.FLYWHEEL_KP)
         .withKI(Constants.ShooterConstants.FLYWHEEL_KI)
@@ -259,11 +315,22 @@ public class ShooterSubsystem implements Subsystem {
         .withReverseSoftLimitEnable(true)
         .withReverseSoftLimitThreshold(Math.min(0, RACK_LIMIT_ROTATIONS));
 
+    /**
+     * Flywheel current limits. The stator limit is the torque the wheel is allowed to make, and it
+     * is what decides how fast the velocity loop claws back the speed a ball took out — so this one
+     * is deliberately the loosest in the robot at 120 A.
+     *
+     * <p>Note the supply limit still sits at 40 A, and supply current is roughly stator current
+     * times duty cycle. Recovery after a ball happens at high duty cycle, so above about 33% output
+     * it is the <i>supply</i> limit that actually binds, not the 120 A. Raising supply is a battery
+     * decision rather than a motor one, so it is left alone here; if recovery still looks slow with
+     * 120 A stator, watch {@code Shooter/Flywheel/DutyCycleAvg} and raise supply next, not stator.
+     */
     private static final CurrentLimitsConfigs flywheelCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
         .withSupplyCurrentLimit(40)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(80);
+        .withStatorCurrentLimit(120);
 
     private static final CurrentLimitsConfigs rackCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
@@ -391,6 +458,10 @@ public class ShooterSubsystem implements Subsystem {
         m_flywheelDutyCycle = m_shooterFlywheelMotor.getDutyCycle();
         BaseStatusSignal.setUpdateFrequencyForAll(
             kFlywheelSampleHz, m_flywheelVelocity, m_flywheelDutyCycle);
+        // Registered before optimizeBusUtilization() silences it, at a rate suited to a fact that
+        // only changes when someone licenses the device.
+        m_flywheelProLicensed = m_shooterFlywheelMotor.getIsProLicensed();
+        m_flywheelProLicensed.setUpdateFrequency(4);
         m_shooterFlywheelMotor.optimizeBusUtilization();
 
         // Tilt compensation reads the Pigeon through getRotation3d(), which is fed by the four
@@ -719,6 +790,14 @@ public class ShooterSubsystem implements Subsystem {
             s.flywheelRps() - getShooterFlywheelVelocityRps());
         SmartDashboard.putBoolean("Shooter/Physics/FlywheelReady", isFlywheelReady());
 
+        // How the motion correction got divided up. With the rack carrying it, the shift row moves
+        // with the driver's sticks and the flywheel command stays on the nominal — if instead the
+        // two RPS rows are pulling apart, the arc has run out of travel and the flywheel is back to
+        // chasing the robot's velocity.
+        SmartDashboard.putNumber("Shooter/Physics/MotionArcShiftDeg", s.motionArcShiftDeg());
+        SmartDashboard.putNumber("Shooter/Physics/NominalFlywheelRPS", s.nominalFlywheelRps());
+        SmartDashboard.putBoolean("Shooter/Physics/MotionRackSaturated", s.motionRackSaturated());
+
         SmartDashboard.putBoolean("Shooter/Physics/RackClamped", s.rackClamped());
         SmartDashboard.putBoolean("Shooter/Physics/SpeedClamped", s.speedClamped());
         SmartDashboard.putBoolean("Shooter/Physics/Feasible", s.feasible());
@@ -826,7 +905,9 @@ public class ShooterSubsystem implements Subsystem {
 
     public void setTurretRotatorPosition(double position) {
         m_lastCommandedTurretRotorPosition = position;
-        m_turretRotatorMotor.setControl(new PositionVoltage(position));
+        m_turretRotatorMotor.setControl(m_turretRequest.withPosition(position)
+            .withVelocity(0.0)
+            .withFeedForward(0.0));
     }
 
     /**
@@ -843,7 +924,7 @@ public class ShooterSubsystem implements Subsystem {
         double omega = m_velocityEstimator.getYawRateRadPerSec();
         double turretRateRps = -omega / (2.0 * Math.PI);
         double motorVelRps = turretRateRps / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
-        m_turretRotatorMotor.setControl(new PositionVoltage(position)
+        m_turretRotatorMotor.setControl(m_turretRequest.withPosition(position)
             .withVelocity(motorVelRps)
             .withFeedForward(turretFeedForwardVolts(turretRateRps, motorVelRps)));
     }
@@ -878,7 +959,9 @@ public class ShooterSubsystem implements Subsystem {
 
     public void setShooterRackPosition(double position) {
         m_lastCommandedRackRotorPosition = position;
-        m_shooterRackMotor.setControl(new PositionVoltage(position));
+        m_shooterRackMotor.setControl(m_rackRequest.withPosition(position)
+            .withVelocity(0.0)
+            .withFeedForward(0.0));
     }
 
     /** Sets rack position from a target angle in degrees. */
@@ -909,12 +992,30 @@ public class ShooterSubsystem implements Subsystem {
             Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC, velocity));
         m_commandedFlywheelRps = clamped;
 
-        // A parked wheel is parked. Compensating zero would spin a flywheel that a mode has
-        // deliberately stopped — storage mode's whole point is that nothing is spinning.
-        double setpoint = clamped <= 0.0
-            ? clamped
-            : Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
-                clamped + m_droopCompensator.compensationRps(clamped));
+        // Asking for zero means "we are not shooting" — trench, defense, storage — and the honest
+        // way to say that to a flywheel is to stop driving it, not to hold it at zero. Holding zero
+        // is a real command: the velocity loop sees a wheel spinning well above its setpoint and
+        // drags it down with reverse voltage, which dumps the wheel's whole stored energy into the
+        // motor and the battery over a second or two, then keeps kS fighting it to stay stopped.
+        // Coasting instead costs nothing, and the wheel is still turning when the next shot comes
+        // up, so the spin-up starts partway there. There is no accuracy to lose: a parked wheel was
+        // never going to deliver a ball anyway.
+        //
+        // CoastOut rather than NeutralOut because this is a statement about the mechanism, not a
+        // deference to configuration — the flywheel must freewheel even if the motor's neutral mode
+        // is later set to brake for some other reason.
+        //
+        // A negative request lands here too. Nothing in the project asks the flywheel to run
+        // backwards, and a mechanism that genuinely needed to would want its own path rather than
+        // this one's droop compensation and acceleration feed-forward.
+        if (clamped <= 0.0) {
+            m_flywheelSetpointRps = 0.0;
+            m_shooterFlywheelMotor.setControl(m_flywheelCoastRequest);
+            return;
+        }
+
+        double setpoint = Math.min(Constants.ShooterConstants.FLYWHEEL_MAX_REV_PER_SEC,
+            clamped + m_droopCompensator.compensationRps(clamped));
 
         double accelRps2 = MathUtil.clamp(
             (setpoint - m_flywheelSetpointRps) / kLoopPeriodSeconds,
@@ -981,6 +1082,15 @@ public class ShooterSubsystem implements Subsystem {
     /** Droop compensator, for telemetry and for commands that want to hold fire until it is ready. */
     public FlywheelDroopCompensator getDroopCompensator() {
         return m_droopCompensator;
+    }
+
+    /**
+     * Writes the learned flywheel droop curve to the roboRIO if anything new has been measured.
+     * Called from {@code Robot.disabledInit()} — the robot gets power-cycled between matches, and
+     * being disabled is the one moment a flash write is guaranteed to cost nothing.
+     */
+    public void saveFlywheelLearning() {
+        m_droopCompensator.saveIfDirty();
     }
 
     /**
@@ -1116,6 +1226,9 @@ public class ShooterSubsystem implements Subsystem {
     @Override
     public void periodic() {
         publishTiltTelemetry();
+
+        SmartDashboard.putBoolean(
+            "Shooter/Flywheel/FocActive", m_flywheelProLicensed.refresh().getValue());
 
         applyTurretGains();
         applyRackGains();

@@ -6,6 +6,7 @@ import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.FeedbackConfigs;
 import com.ctre.phoenix6.configs.MotionMagicConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
+import com.ctre.phoenix6.controls.DutyCycleOut;
 import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.MotionMagicVoltage;
 import com.ctre.phoenix6.controls.NeutralOut;
@@ -87,8 +88,20 @@ public class GroundIntakeSubsystem implements Subsystem {
     private double m_appliedStatorAmps = Double.NaN;
     private double m_activeRollerStatorLimitAmps = kRollerCurrentLimits.StatorCurrentLimit;
 
-    // Reusable control requests
-    private final MotionMagicVoltage m_pivotRequest = new MotionMagicVoltage(0).withSlot(0);
+    // Reusable control requests.
+    //
+    // FOC is stated explicitly on every one of them. Phoenix 6 already defaults EnableFOC to true
+    // on the *Voltage and *DutyCycle families, so none of this changes how the intake behaves — it
+    // just means the commutation mode is visible at the call site instead of implied. The rollers
+    // and indexers get their own DutyCycleOut requests rather than TalonFX.set(), which builds an
+    // identical FOC-enabled DutyCycleOut internally but hides that fact.
+    private final MotionMagicVoltage m_pivotRequest =
+        new MotionMagicVoltage(0).withSlot(0).withEnableFOC(true);
+    private final DutyCycleOut m_leftPivotOpenLoop = new DutyCycleOut(0).withEnableFOC(true);
+    private final DutyCycleOut m_rightPivotOpenLoop = new DutyCycleOut(0).withEnableFOC(true);
+    private final DutyCycleOut m_rollerRequest = new DutyCycleOut(0).withEnableFOC(true);
+    private final DutyCycleOut m_leftIndexerRequest = new DutyCycleOut(0).withEnableFOC(true);
+    private final DutyCycleOut m_rightIndexerRequest = new DutyCycleOut(0).withEnableFOC(true);
     private double m_pivotTargetPosition = 0.0;
     private final Follower m_rightPivotFollower = new Follower(
         Constants.GroundIntakeConstants.LEFT_PIVOT_ID, MotorAlignmentValue.Opposed);
@@ -293,7 +306,8 @@ public class GroundIntakeSubsystem implements Subsystem {
      * is nearly always, so this is a no-op in every ordinary match.
      */
     public void setRollerSpeed(double speed) {
-        m_rollerMotor.set(speed * PowerBudget.intakeOutputScale());
+        m_rollerMotor.setControl(
+            m_rollerRequest.withOutput(speed * PowerBudget.intakeOutputScale()));
     }
 
     public void neutralMode(){
@@ -302,8 +316,10 @@ public class GroundIntakeSubsystem implements Subsystem {
     }
 
     public void forceDownMode(){
-        m_leftPivotMotor.set(Constants.GroundIntakeConstants.PIVOT_FORCE_DOWN_POWER);
-        m_rightPivotMotor.set(-Constants.GroundIntakeConstants.PIVOT_FORCE_DOWN_POWER);
+        m_leftPivotMotor.setControl(m_leftPivotOpenLoop.withOutput(
+            Constants.GroundIntakeConstants.PIVOT_FORCE_DOWN_POWER));
+        m_rightPivotMotor.setControl(m_rightPivotOpenLoop.withOutput(
+            -Constants.GroundIntakeConstants.PIVOT_FORCE_DOWN_POWER));
     }
 
     /**
@@ -418,20 +434,22 @@ public class GroundIntakeSubsystem implements Subsystem {
 
     /** Scaled by the power budget, same as {@link #setRollerSpeed(double)}. */
     public void setLeftIndexerMotorSpeed(double speed) {
-        m_leftIndexerMotor.set(speed * PowerBudget.intakeOutputScale());
+        m_leftIndexerMotor.setControl(
+            m_leftIndexerRequest.withOutput(speed * PowerBudget.intakeOutputScale()));
     }
 
     /** Scaled by the power budget, same as {@link #setRollerSpeed(double)}. */
     public void setRightIndexerMotorSpeed(double speed) {
-        m_rightIndexerMotor.set(speed * PowerBudget.intakeOutputScale());
+        m_rightIndexerMotor.setControl(
+            m_rightIndexerRequest.withOutput(speed * PowerBudget.intakeOutputScale()));
     }
 
     public void stop() {
         m_leftPivotMotor.setControl(new StaticBrake());
         m_rightPivotMotor.setControl(m_rightPivotFollower);
-        m_rollerMotor.set(0);
-        m_leftIndexerMotor.set(0);
-        m_rightIndexerMotor.set(0);
+        m_rollerMotor.setControl(m_rollerRequest.withOutput(0));
+        m_leftIndexerMotor.setControl(m_leftIndexerRequest.withOutput(0));
+        m_rightIndexerMotor.setControl(m_rightIndexerRequest.withOutput(0));
     }
 
     /**

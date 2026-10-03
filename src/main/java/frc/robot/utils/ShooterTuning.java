@@ -28,7 +28,11 @@ import frc.robot.utils.AimSolver.AimTuning;
  *   <li>{@code FeederForwardPushMps} / {@code FeederBackwardPushAt90Mps} — with the rest dialed in,
  *       park the turret at 0 deg to isolate the forward term, then at 90 deg for the rearward one.
  *   <li>Only now start driving, and tune {@code ShootOnTheMoveGain}. Set it to 0 first to confirm
- *       stationary aim is still good, then bring it to 1.
+ *       stationary aim is still good, then bring it to 1. Watch
+ *       {@code Shooter/Physics/MotionArcShiftDeg} swing with the sticks while
+ *       {@code Shooter/Physics/FlywheelMotorRPS} stays put — that is the rack taking the
+ *       correction. If moving shots come in too flat, pull {@code MotionRackMaxSwingDeg} down
+ *       until they don't.
  *   <li>{@code TiltRollOffsetDeg} / {@code TiltPitchOffsetDeg} — with the robot parked on flat
  *       carpet, read {@code Shooter/Tilt/RollDeg} and {@code Shooter/Tilt/PitchDeg} and enter what
  *       they say. They should be zero and generally won't be, and whatever they read on the flat is
@@ -40,6 +44,20 @@ import frc.robot.utils.AimSolver.AimTuning;
  */
 public class ShooterTuning {
 
+    /**
+     * Operator switch, default on, for letting the rack rather than the flywheel carry the
+     * shoot-on-the-move correction. See {@link AimSolver} for what it changes and
+     * {@code ShooterConstants.MOTION_RACK_FIRST} for why it is on.
+     *
+     * <p>A toggle rather than a tunable because it is the kind of thing that has to be switchable
+     * between one cycle and the next: if moving shots are landing worse than they did, this takes
+     * the whole scheme back out and returns the robot to compensating with the flywheel, without
+     * also giving up motion compensation itself (that is {@code ShootOnTheMoveGain}, and setting it
+     * to zero gives up rather more).
+     */
+    public static final DashboardToggle MOTION_RACK_FIRST =
+        new DashboardToggle("Shooter/MotionRackFirst", ShooterConstants.MOTION_RACK_FIRST);
+
     private final TunableDouble m_gravity;
     private final TunableDouble m_descentMarginDeg;
     private final TunableDouble m_rackOffsetDeg;
@@ -49,6 +67,7 @@ public class ShooterTuning {
     private final TunableDouble m_speedPerMeterMps;
     private final TunableDouble m_flywheelRpsOffset;
     private final TunableDouble m_shootOnTheMoveGain;
+    private final TunableDouble m_motionRackMaxSwingDeg;
     private final TunableDouble m_feederForwardPushMps;
     private final TunableDouble m_feederBackwardPushAt90Mps;
 
@@ -86,6 +105,8 @@ public class ShooterTuning {
             "Tuning/Shooter/FlywheelRpsOffset", ShooterConstants.FLYWHEEL_RPS_OFFSET_DEFAULT);
         m_shootOnTheMoveGain = new TunableDouble(
             "Tuning/Shooter/ShootOnTheMoveGain", ShooterConstants.SHOOT_ON_THE_MOVE_GAIN);
+        m_motionRackMaxSwingDeg = new TunableDouble(
+            "Tuning/Shooter/MotionRackMaxSwingDeg", ShooterConstants.MOTION_RACK_MAX_SWING_DEG);
         m_feederForwardPushMps = new TunableDouble(
             "Tuning/Shooter/FeederForwardPushMps", TurretConstants.FEEDER_FORWARD_PUSH_MPS);
         m_feederBackwardPushAt90Mps = new TunableDouble(
@@ -122,7 +143,9 @@ public class ShooterTuning {
             m_flywheelRpsOffset.get(),
             m_shootOnTheMoveGain.get(),
             m_feederForwardPushMps.get(),
-            m_feederBackwardPushAt90Mps.get());
+            m_feederBackwardPushAt90Mps.get(),
+            MOTION_RACK_FIRST.get(),
+            m_motionRackMaxSwingDeg.get());
     }
 
     /** Forward offset of the ball's launch point from robot center, meters (positive = front). */

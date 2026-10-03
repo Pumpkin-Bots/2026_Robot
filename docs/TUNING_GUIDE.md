@@ -226,6 +226,46 @@ brief pin during recovery from each ball is normal and does not count.
 **Exit test:** shots from your full range land centred, and a burst of 10 doesn't walk progressively
 short down the burst.
 
+### The bins survive a reboot
+
+What you fill in this stage is saved to `/home/lvuser/flywheel-droop.json` and loaded back at the
+next boot, so a practice session's worth of balls is still there after the power cycle between
+matches — and after a code deploy, since that directory isn't the deploy directory.
+
+- `Shooter/Flywheel/Store/Restored` — true if this boot started from a saved curve rather than the
+  physics seed. **Check this before the first match of the day.**
+- `Shooter/Flywheel/Store/Status` — one line saying what happened: `loaded 47 balls`, `no saved
+  file`, `different shooter geometry - discarded`.
+- `Shooter/Flywheel/Store/Unsaved` — there are new balls not yet on disk. Clears on disable.
+
+Saves happen automatically ~20 s after shooting settles, and always when the robot is disabled.
+Nothing is written in simulation.
+
+**A saved curve is refused when the shooter it was measured on isn't the shooter that's running**:
+change `FLYWHEEL_GEAR_RATIO`, `FLYWHEEL_EFFECTIVE_DIAMETER_METERS`, `FLYWHEEL_ROTOR_MOI_KG_M2`,
+`FUEL_MASS_KG`, or `FLYWHEEL_MAX_REV_PER_SEC` and the old file is discarded on the next boot — that
+is correct, and it means you re-fill the bins after a gearing change.
+
+What the signature *can't* see is hardware: a new flywheel wheel, a retensioned belt, a different
+ball batch. After any of those, flip **`Shooter/Flywheel/ClearLearned`** (a plain dashboard toggle,
+live at all times, no tuning mode needed). It wipes the live curve *and* the file and puts itself
+back to off; the next shots start from the physics seed.
+
+### Watching the curve converge
+
+The whole curve is published two ways, because the dashboards want different things:
+
+- **Elastic** has no XY plot, so each bin also goes out under its own key —
+  `Shooter/Flywheel/Bins/40-50Rps` and friends. Drag the whole `Bins/` folder onto **one Graph
+  widget**: you get every bin converging live as you shoot. Flat-at-zero lines are bins you haven't
+  fired into yet, which is the fastest way to see where your speed spread is thin.
+- **AdvantageScope / Glass** plot arrays against arrays. `Shooter/Flywheel/Curve/BinCenterRps` vs
+  `Curve/BinDeficitRps` draws the measured shape, with `Curve/BinSamples` for confidence.
+  `Curve/SampleRps` vs `Curve/CompensationRps` is the more useful one for a sanity check — that's
+  post-gain, post-clamp, post-extrapolation, i.e. what the robot will *actually* add at each speed,
+  so you can see `MaxCompensationRps` biting and see the extrapolation running off the end of the
+  bins you've filled.
+
 ---
 
 ## Stage 5 — Shooting on the move, and tilt
@@ -246,6 +286,30 @@ Two independent terms; tune each at the angle where the other contributes nothin
 
 Set to **0** first and confirm stationary aim is still good — that isolates an aiming problem from a
 motion-compensation problem. Then walk it to 1.0.
+
+The correction is taken by the **rack**, not the flywheel: the solver picks the arc whose required
+launch speed is the speed the flywheel would be held at standing in the same spot, so the flywheel
+command tracks distance alone while the rack swings with the sticks. Drive at the hub and watch:
+
+| Row | What it should do |
+|---|---|
+| `Shooter/Physics/MotionArcShiftDeg` | swing up with speed — this is the rack taking the correction |
+| `Shooter/Physics/FlywheelMotorRPS` | stay on `Shooter/Physics/NominalFlywheelRPS` |
+| `Shooter/Physics/MotionRackSaturated` | false while driving **at** the target |
+
+Driving **away** from the target it saturates and the flywheel goes back to carrying the
+correction — that is expected, not a bug. Flattening the arc is the mirror of steepening and the
+geometry makes it worthless (on an 8 m shot, spending the whole descent margin recovers ~0.2 m/s),
+so the solver declines the trade. See the class comment in `AimSolver` for the numbers.
+
+`Tuning/Shooter/MotionRackMaxSwingDeg` caps how far the arc may be steepened, in degrees of launch
+elevation. Default 20° is wider than the rack's whole travel, i.e. effectively off. Lower it if
+moving shots start arriving late and scattered (more arc = more hang time = longer for the velocity
+estimate to be wrong by) while stationary shots are still good.
+
+> **`Shooter/MotionRackFirst` is a toggle, not a tunable** — live at all times, default **ON**. Off
+> puts the whole correction back on the flywheel, which is a different thing from setting
+> `ShootOnTheMoveGain` to 0: the correction still happens, just in the slower joint.
 
 ### 5c. Tilt — `Tuning/Shooter/TiltCompensationGain`
 
@@ -351,6 +415,8 @@ through the moment the wheel is back.
 | `ShotCount` wrong | Stage 2. Nothing downstream is trustworthy until this is right |
 | Aim drifts as robot turns | Turret `kV` (stage 1a) |
 | Good stationary, bad moving | `ShootOnTheMoveGain` (stage 5b) |
+| Bad only driving *away* from the target | `MotionRackSaturated` — the flywheel is carrying it and lagging; nothing to tune |
+| Bad only driving *at* the target | Rack tracking, not the solve. Watch `Physics/RackErrorDeg` |
 | Good on flat, bad on the depot | Tilt offsets (stage 0) then gain (stage 5c) |
 | Intake dies mid-match | `Power/Tier` — protection is working; stage 6 to retune it |
 
@@ -373,6 +439,15 @@ through the moment the wheel is back.
 | `Saturated` | Motor flat out **continuously**, not just a recovery spike. Learning frozen. Hardware answer, not tuning. |
 | `SetpointRps` / `MeasuredRps` / `ErrorRps` | Commanded (compensated), actual, difference |
 | `AtSpeed` / `Falling` | Detector state |
+| `Bins/<lo>-<hi>Rps` | Learned deficit per speed bin. **Put the whole folder on one Elastic graph** to watch them converge. |
+| `Curve/BinCenterRps` + `Curve/BinDeficitRps` | The measured curve as arrays, for an AdvantageScope XY plot |
+| `Curve/SampleRps` + `Curve/CompensationRps` | What will actually be added at each speed — after gain, clamp and extrapolation |
+| `Store/Restored` | This boot started from a saved curve, not the physics seed |
+| `Store/Status` | Why, in one line: `loaded 47 balls`, `no saved file`, `different shooter geometry - discarded` |
+| `Store/Unsaved` | New balls not yet written to disk. Clears on disable. |
+
+`Shooter/Flywheel/ClearLearned` (toggle, always live) wipes the learned curve and its saved file —
+for after a wheel or belt change, which the geometry signature can't detect.
 
 **Shooter/Physics/** — the aim solver
 
@@ -438,6 +513,7 @@ Tuning/Flywheel/MaxCompensationRps       10.0
 Tuning/Shooter/FeederForwardPushMps       0.45     tune at turret 0 deg
 Tuning/Shooter/FeederBackwardPushAt90Mps  0.15     tune at turret 90 deg
 Tuning/Shooter/ShootOnTheMoveGain         1.0      set 0 first to isolate
+Tuning/Shooter/MotionRackMaxSwingDeg     20.0      wider than the rack travel = off
 Tuning/Shooter/TiltCompensationGain       1.0      set 0 to remove the whole correction
 
 --- Stage 0: measured, not tuned ---------------------------------------
@@ -471,6 +547,7 @@ Tuning/TuningModeEnabled                  OFF      the master switch for everyth
 Tuning/ResetToDefaults                    -        momentary; restores all compiled values
 Power/BrownoutProtectionEnabled           ON
 Shooter/HoldFeedUntilAtSpeed              OFF
+Shooter/MotionRackFirst                   ON       off = flywheel carries motion again
 Shooter/TrenchTowerStorageEnabled         ON
 ```
 

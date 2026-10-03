@@ -50,7 +50,12 @@ public class Robot extends TimedRobot {
     }
 
     @Override
-    public void disabledInit() {}
+    public void disabledInit() {
+        // The flywheel's learned droop curve costs a hopper of practice balls to measure and is
+        // still true after the robot is power-cycled, which is exactly what happens between
+        // matches. Saving on disable means the write never lands in the middle of a shot.
+        m_robotContainer.saveFlywheelLearning();
+    }
 
     @Override
     public void disabledPeriodic() {}

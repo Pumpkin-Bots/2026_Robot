@@ -38,6 +38,14 @@ public class TunerConstants {
     private static final ClosedLoopOutputType kSteerClosedLoopOutput = ClosedLoopOutputType.Voltage;
     // The closed-loop output type to use for the drive motors;
     // This affects the PID/FF gains for the drive motors
+    //
+    // Both of these stay Voltage on purpose, and it is not a gap in the robot's FOC coverage. The
+    // CTRE swerve layer builds its own module requests and asks for FOC on them; there is no
+    // EnableFOC knob exposed here to turn on. What this enum selects is the UNITS the requests and
+    // the gains above are expressed in, so flipping either to TorqueCurrentFOC does not add FOC —
+    // it silently reinterprets driveGains/steerGains from volts to amps (kV 0.124 V per rot/s
+    // becomes 0.124 A per rot/s) and leaves the robot barely able to move. Same trap as the
+    // flywheel's; see the note on flywheelGains in ShooterSubsystem.
     private static final ClosedLoopOutputType kDriveClosedLoopOutput = ClosedLoopOutputType.Voltage;
 
     // The type of motor used for the drive motor

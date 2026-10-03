@@ -32,6 +32,7 @@ src/main/java/frc/robot/
 │   └── VisionConstants.java          # Vision config (camera names, transforms, std devs)
 ├── utils/
 │   ├── FlywheelDroopCompensator.java # Learns per-shot flywheel sag, biases commanded RPS
+│   ├── FlywheelDroopStore.java       # Persists that learned curve to the RIO across reboots
 │   └── PowerBudget.java              # Brownout tiers: cuts intake, then drive, never the shooter
 └── generated/
     └── TunerConstants.java           # CTRE Tuner X generated swerve constants
@@ -72,6 +73,25 @@ mode (`RobotContainer.m_shooterModeActive` / `restoreShooterMode`). Both trigger
 simulation — the sim's raw axis order on this Mac doesn't match the Driver Station's, and the left
 trigger is already the sim's manual-fire control.
 
+### Shoot On The Move — the rack pays, not the flywheel
+For a fixed target there is a whole family of launch angles that reach it, each with its own launch
+speed, so "which arc" is free and the motion correction can be charged to whichever joint handles it
+better. `AimSolver` picks the arc whose required shooter speed equals the speed the flywheel would be
+held at **standing in the same spot**, so the flywheel command tracks only the distance (slow) and
+the rack absorbs the driver (fast). A loaded flywheel needs most of a second to move a few RPS and a
+ball fed mid-change leaves at whatever speed the wheel is passing through; the rack is a geared screw
+that makes a few degrees in a fraction of that.
+
+The search only ever goes **steeper**, and that is physics, not a shortcut. Steepening moves speed
+out of the horizontal — the axis the robot's velocity acts along — so a few degrees swallow several
+m/s. Flattening is the mirror trade and does not work: the lower total energy comes back out as a
+longer horizontal component for the motion to add to, so on an 8 m shot spending the entire 12° of
+descent margin recovers ~0.2 m/s. Driving *away* from the target the flywheel still has to spin up,
+and `Shooter/Physics/MotionRackSaturated` says so. Accuracy is never at stake either way: every
+candidate arc is an exact solution, so a bad search gives a shot that is harder on the flywheel,
+never one that misses. Operator switch `Shooter/MotionRackFirst` (default on) puts it all back on the
+flywheel; `Tuning/Shooter/MotionRackMaxSwingDeg` caps the steepening to protect hang time.
+
 ### Flywheel Speed Delivery
 The aim solve produces the speed the ball must *leave* at; a wheel held exactly there does not
 deliver it, because the ball takes energy out of the wheel on its way through.
@@ -92,6 +112,22 @@ wheel for more speed cannot produce any. Cold start falls back to a physics seed
 The detector runs at **200 Hz** via `Robot.addPeriodic`, not the 50 Hz main loop, and the flywheel
 velocity signal is published at 200 Hz to match — a ball's contact is 10–25 ms, so at loop rate the
 trough is one sample wide and usually missed. Lowering either rate breaks it.
+
+A flywheel command of **zero** coasts rather than holding zero. Trench, defense, and storage all ask
+for zero, and the velocity loop reads that as a real command: it drags a spinning wheel down with
+reverse voltage, dumping its stored energy into the motor and battery, then keeps kS fighting it to
+stay stopped. Coasting costs nothing and leaves the wheel part-way to the next shot. `CoastOut`, not
+`NeutralOut`, so it freewheels regardless of the motor's configured neutral mode.
+
+The learned bins are saved to `/home/lvuser/flywheel-droop.json` (`FlywheelDroopStore`) and reloaded
+at boot, so a session's learning survives the power cycle between matches and a code deploy. Writes
+are atomic and happen on a low-priority daemon thread — never inside the 200 Hz sampler — triggered
+~20 s after shooting settles and on `disabledInit()`. A saved file is refused unless its geometry
+signature (gearing, effective diameter, rotor MOI, ball mass, bin layout) matches the running code;
+a wheel or belt change is invisible to that, so `Shooter/Flywheel/ClearLearned` wipes both the live
+curve and the file. Nothing is written in simulation. The curve is published per-bin under
+`Shooter/Flywheel/Bins/` (Elastic has no XY plot, so one graph widget over that folder shows the
+bins converging) and as arrays under `Shooter/Flywheel/Curve/` for AdvantageScope.
 
 `FLYWHEEL_EFFECTIVE_DIAMETER_METERS` is **derived**, not hand-entered — it is the single point where
 motor RPS becomes ball speed, and it carries both the 28:18 motor reduction and the 28:18
@@ -147,9 +183,30 @@ and edit those constants rather than the command logic.
 - **Back-Left:** Drive=7, Steer=2, Encoder=11
 - **Back-Right:** Drive=8, Steer=3, Encoder=12
 
+## Commutation (FOC)
+
+Every control request in the project states `withEnableFOC(true)`, and every one of them stays in
+the **voltage/duty-cycle** family. Phoenix 6 already defaults `EnableFOC` to true on those requests,
+so the flag is documentation of intent rather than behaviour — but stating it has a point: it marks
+the one way an "add FOC" change goes wrong. FOC is a *commutation mode*, orthogonal to the units a
+request is expressed in. Switching to the `*TorqueCurrentFOC` request family, or setting a swerve
+`ClosedLoopOutputType` to `TorqueCurrentFOC`, does **not** enable anything that is not already on —
+it reinterprets every Slot0 gain from volts to **amps**, so kV 0.125 goes from 0.125 V per rot/s to
+0.125 A per rot/s and the mechanism crawls. On the flywheel that reads as a shot that leaves far too
+slowly at every distance. Those gains do not carry over and would need re-characterising in amps.
+
+The drivetrain has no `EnableFOC` knob: the CTRE swerve layer builds its module requests natively and
+already asks for FOC. `kDriveClosedLoopOutput`/`kSteerClosedLoopOutput` stay `Voltage`.
+
+FOC is a Phoenix Pro feature — an unlicensed TalonFX ignores the request, runs trapezoidal, and sets
+`Fault_UnlicensedFeatureInUse`. `Shooter/Flywheel/FocActive` publishes the flywheel's license state
+so "we asked for FOC" and "FOC is running" can be told apart from the driver station.
+
 ## Important Notes
 
 - `TunerConstants.java` is generated by CTRE Tuner X — avoid manual edits unless updating specific values
+- Flywheel stator limit is 120 A (supply 40 A). Above ~33% duty cycle the supply limit is what
+  actually binds, so if post-shot recovery still looks slow, raise supply — not stator
 - PathPlanner settings in `src/main/deploy/pathplanner/settings.json` must match drivetrain capabilities (currently configured for Kraken X60s, 5.67:1 gearing, 5.44 m/s max speed)
 - Vision standard deviations scale with tag distance and count (see `VisionSubsystem.calculateStandardDeviations`)
 - SysId characterization routines are bound to controller (Back/Start + X/Y) for tuning drive motor PID

@@ -340,6 +340,14 @@ public class RobotContainer {
         return ShooterSubsystem.flywheelSamplePeriodSeconds();
     }
 
+    /**
+     * Persists the flywheel's learned droop curve. Called from {@link Robot#disabledInit()} so what
+     * the robot learned this match is still there after the power cycle before the next one.
+     */
+    public void saveFlywheelLearning() {
+        shooter.saveFlywheelLearning();
+    }
+
     /** Publishes current mechanism angles as 3D poses for AdvantageScope. Called every loop from {@link Robot}. */
     public void updateMechanismTelemetry() {
         logger.updateMechanismPoses(

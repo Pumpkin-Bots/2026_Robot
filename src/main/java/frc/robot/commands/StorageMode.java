@@ -88,7 +88,9 @@ public class StorageMode extends Command {
         shooter.setShooterRackAngle(Constants.ShooterConstants.RACK_STORAGE_ANGLE_DEG);
         shooter.aimTurretAt(aimTarget);
 
-        // Feeder off — nothing should reach a stopped flywheel.
+        // Feeder off — nothing should reach a flywheel that isn't being driven. Note that a zero
+        // flywheel command coasts rather than braking, so the wheel is still turning down for a
+        // while after entering storage; this is what keeps a ball out of it in the meantime.
         turret.setTurretIndexerSpeed(0.0);
 
         intake.runIntakeUntilJam();

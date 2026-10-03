@@ -43,7 +43,9 @@ class AimSolverTest {
             0.0,    // flywheelRpsOffset
             1.0,    // shootOnTheMoveGain
             0.0,    // feederForwardPushMps
-            0.0);   // feederBackwardPushAt90Mps
+            0.0,    // feederBackwardPushAt90Mps
+            true,   // motionRackFirst
+            20.0);  // motionRackMaxSwingDeg
     }
 
     private static AimTuning withFeeder(double forward, double backwardAt90) {
@@ -52,7 +54,17 @@ class AimSolverTest {
             t.gravityMps2(), t.descentMarginDeg(), t.rackMinAngleDeg(), t.rackMaxAngleDeg(),
             t.rackOffsetDeg(), t.turretOffsetDeg(), t.flywheelDiameterMeters(), t.maxFlywheelRps(),
             t.speedScalar(), t.speedPerMeterMps(), t.flywheelRpsOffset(), t.shootOnTheMoveGain(),
-            forward, backwardAt90);
+            forward, backwardAt90, t.motionRackFirst(), t.motionRackMaxSwingDeg());
+    }
+
+    /** The old division of labour: arc fixed by the policy, flywheel absorbs the motion. */
+    private static AimTuning flywheelCarriesMotion() {
+        AimTuning t = tuning();
+        return new AimTuning(
+            t.gravityMps2(), t.descentMarginDeg(), t.rackMinAngleDeg(), t.rackMaxAngleDeg(),
+            t.rackOffsetDeg(), t.turretOffsetDeg(), t.flywheelDiameterMeters(), t.maxFlywheelRps(),
+            t.speedScalar(), t.speedPerMeterMps(), t.flywheelRpsOffset(), t.shootOnTheMoveGain(),
+            t.feederForwardPushMps(), t.feederBackwardPushAt90Mps(), false, t.motionRackMaxSwingDeg());
     }
 
     /**
@@ -233,7 +245,8 @@ class AimSolverTest {
             t.gravityMps2(), t.descentMarginDeg(), t.rackMinAngleDeg(), t.rackMaxAngleDeg(),
             t.rackOffsetDeg(), t.turretOffsetDeg(), t.flywheelDiameterMeters(), t.maxFlywheelRps(),
             t.speedScalar(), t.speedPerMeterMps(), t.flywheelRpsOffset(), 0.0,
-            t.feederForwardPushMps(), t.feederBackwardPushAt90Mps());
+            t.feederForwardPushMps(), t.feederBackwardPushAt90Mps(),
+            t.motionRackFirst(), t.motionRackMaxSwingDeg());
 
         AimSolution moving = AimSolver.solve(TARGET, LAUNCH, 0.0, 3.0, -2.0, noCompensation);
         AimSolution still = AimSolver.solve(TARGET, LAUNCH, 0.0, 0.0, 0.0, noCompensation);
@@ -249,7 +262,8 @@ class AimSolverTest {
             base.gravityMps2(), base.descentMarginDeg(), base.rackMinAngleDeg(),
             base.rackMaxAngleDeg(), 3.0, -5.0, base.flywheelDiameterMeters(), base.maxFlywheelRps(),
             base.speedScalar(), base.speedPerMeterMps(), base.flywheelRpsOffset(),
-            base.shootOnTheMoveGain(), base.feederForwardPushMps(), base.feederBackwardPushAt90Mps());
+            base.shootOnTheMoveGain(), base.feederForwardPushMps(), base.feederBackwardPushAt90Mps(),
+            base.motionRackFirst(), base.motionRackMaxSwingDeg());
 
         AimSolution plain = AimSolver.solve(TARGET, LAUNCH, 0.5, 1.0, 1.0, base);
         AimSolution shifted = AimSolver.solve(TARGET, LAUNCH, 0.5, 1.0, 1.0, offset);
@@ -378,6 +392,112 @@ class AimSolverTest {
         assertEquals(viaHeading.turretAngleDeg(), viaOrientation.turretAngleDeg(), 1e-12);
         assertEquals(viaHeading.rackAngleDeg(), viaOrientation.rackAngleDeg(), 1e-12);
         assertEquals(viaHeading.flywheelRps(), viaOrientation.flywheelRps(), 1e-12);
+    }
+
+    /**
+     * The whole point of handing the correction to the rack: the flywheel command must come out the
+     * same as it would standing in the same spot, so a driver moving the sticks never asks a loaded
+     * wheel to change speed. The ball still has to land on the target, which the shot tests above
+     * cover — this one is about which joint did the work.
+     */
+    @Test
+    void drivingAtTheTargetHoldsTheFlywheelAtItsStationarySpeed() {
+        // Heading and velocity both down +X, straight at a target that is +X of the launch point.
+        AimSolution still = AimSolver.solve(FAR_TARGET, LAUNCH, 0.0, 0.0, 0.0, tuning());
+        AimSolution moving = AimSolver.solve(FAR_TARGET, LAUNCH, 0.0, 3.0, 0.0, tuning());
+
+        assertEquals(still.flywheelRps(), moving.flywheelRps(), 0.01,
+            "the flywheel command should not have moved at all");
+        assertEquals(moving.nominalFlywheelRps(), moving.flywheelRps(), 0.01,
+            "and it should be sitting exactly on the stationary reference it was solved against");
+        assertTrue(!moving.motionRackSaturated(),
+            "3 m/s at 8 m is well inside what the rack can absorb");
+        assertTrue(moving.motionArcShiftDeg() > 2.0,
+            "the arc is what should have moved instead");
+        assertTrue(moving.rackAngleDeg() < still.rackAngleDeg() - 2.0,
+            "steeper arc means a lower rack angle, since the rack is measured from vertical");
+    }
+
+    @Test
+    void theOldBehaviourPutThatSameCorrectionInTheFlywheel() {
+        AimTuning t = flywheelCarriesMotion();
+        AimSolution still = AimSolver.solve(FAR_TARGET, LAUNCH, 0.0, 0.0, 0.0, t);
+        AimSolution moving = AimSolver.solve(FAR_TARGET, LAUNCH, 0.0, 3.0, 0.0, t);
+
+        assertTrue(Math.abs(moving.flywheelRps() - still.flywheelRps()) > 2.0,
+            "with the switch off the flywheel must be the thing that changes");
+        assertEquals(0.0, moving.motionArcShiftDeg(), 1e-12,
+            "and the arc must be left exactly where the policy put it");
+    }
+
+    @Test
+    void drivingAwayLeavesTheArcAloneAndSaysSo() {
+        // Flattening is the mirror of steepening and barely recovers anything, so the solver
+        // declines the trade rather than spending the descent margin on it.
+        AimSolution still = AimSolver.solve(FAR_TARGET, LAUNCH, 0.0, 0.0, 0.0, tuning());
+        AimSolution moving = AimSolver.solve(FAR_TARGET, LAUNCH, 0.0, -3.0, 0.0, tuning());
+
+        assertEquals(0.0, moving.motionArcShiftDeg(), 1e-12, "the arc should not have flattened");
+        assertEquals(still.nominalFlywheelRps(), moving.nominalFlywheelRps(), 1e-9,
+            "same spot, so the arc it was solved against is the same one");
+        assertTrue(moving.motionRackSaturated(),
+            "the flywheel is carrying this one, which has to be visible");
+        assertTrue(moving.flywheelRps() > moving.nominalFlywheelRps() + 2.0,
+            "and it is being asked for more speed than the stationary reference");
+    }
+
+    @Test
+    void aStationaryShotIsUnaffectedByWhichJointCarriesMotion() {
+        AimSolution rackFirst = AimSolver.solve(FAR_TARGET, LAUNCH, 0.4, 0.0, 0.0, tuning());
+        AimSolution flywheelFirst =
+            AimSolver.solve(FAR_TARGET, LAUNCH, 0.4, 0.0, 0.0, flywheelCarriesMotion());
+
+        assertEquals(flywheelFirst.rackAngleDeg(), rackFirst.rackAngleDeg(), 1e-12);
+        assertEquals(flywheelFirst.turretAngleDeg(), rackFirst.turretAngleDeg(), 1e-12);
+        assertEquals(flywheelFirst.flywheelRps(), rackFirst.flywheelRps(), 1e-12);
+    }
+
+    @Test
+    void theSwingCapHandsTheRemainderBackToTheFlywheel() {
+        AimTuning t = tuning();
+        AimTuning capped = new AimTuning(
+            t.gravityMps2(), t.descentMarginDeg(), t.rackMinAngleDeg(), t.rackMaxAngleDeg(),
+            t.rackOffsetDeg(), t.turretOffsetDeg(), t.flywheelDiameterMeters(), t.maxFlywheelRps(),
+            t.speedScalar(), t.speedPerMeterMps(), t.flywheelRpsOffset(), t.shootOnTheMoveGain(),
+            t.feederForwardPushMps(), t.feederBackwardPushAt90Mps(), true, 2.0);
+
+        AimSolution uncapped = AimSolver.solve(FAR_TARGET, LAUNCH, 0.0, 3.0, 0.0, t);
+        AimSolution limited = AimSolver.solve(FAR_TARGET, LAUNCH, 0.0, 3.0, 0.0, capped);
+
+        assertEquals(2.0, limited.motionArcShiftDeg(), 1e-6, "the arc should stop at the cap");
+        assertTrue(limited.motionRackSaturated(), "stopping at the cap is saturation");
+        assertTrue(limited.flywheelRps() < limited.nominalFlywheelRps() - 1.0,
+            "whatever the arc could not take has to show up on the flywheel");
+        assertTrue(uncapped.motionArcShiftDeg() > limited.motionArcShiftDeg(),
+            "test geometry is wrong if the uncapped solve did not want to swing further");
+    }
+
+    @Test
+    void aSaturatedArcStillLandsOnTarget() {
+        // The rack giving up is a question of which joint is doing the work, never of accuracy:
+        // every arc the search can choose, including the one it falls back to, hits the target.
+        assertLandsOnTarget(FAR_TARGET, LAUNCH, Math.toRadians(140), -3.0, 1.5,
+            withFeeder(0.45, 0.15), ArcPolicy.DESCENT_MARGIN);
+    }
+
+    @Test
+    void movingShuttlePassAlsoHoldsTheFlywheelSteady() {
+        // The shuttle policy pins the rack flat, so the arc has the whole rack travel available to
+        // steepen into — and nothing below it, which is exactly the direction that was no use.
+        AimSolution still = AimSolver.solve(
+            FLOOR_TARGET, LAUNCH, 0.0, 0.0, 0.0, tuning(), ArcPolicy.FLATTEST);
+        AimSolution moving = AimSolver.solve(
+            FLOOR_TARGET, LAUNCH, 0.0, 3.0, 0.0, tuning(), ArcPolicy.FLATTEST);
+
+        assertEquals(still.flywheelRps(), moving.flywheelRps(), 0.01);
+        assertTrue(moving.motionArcShiftDeg() > 1.0, "the rack should have come off its high stop");
+        assertTrue(moving.rackAngleDeg() < still.rackAngleDeg(),
+            "and a shuttle pass taken while chasing it should be arced, not pinned");
     }
 
     @Test
