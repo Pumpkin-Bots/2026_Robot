@@ -597,8 +597,8 @@ FUEL_MASS_KG                    0.145      TODO: weigh one
 FLYWHEEL_SHOT_ENERGY_EFFICIENCY 0.5
 FLYWHEEL_GEAR_RATIO             28/18      motor rot per 4" wheel rot
 FLYWHEEL_SMALL_PER_LARGE_RATIO  18/28      2" rot per 4" rot
-FLYWHEEL_MAX_REV_PER_SEC        80.0       80% of Kraken free speed
-RACK_MIN_ANGLE / RACK_MAX_ANGLE 15 / 42
+FLYWHEEL_MAX_REV_PER_SEC        90.0       90% of Kraken free speed
+RACK_MIN_ANGLE / RACK_MAX_ANGLE 18 / 38
 TURRET_ROTATOR_MIN/MAX_ANGLE    -200 / 300
 ROLLER_STALL_CURRENT_AMPS       55.0
 ```
