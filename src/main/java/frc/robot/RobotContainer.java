@@ -327,20 +327,6 @@ public class RobotContainer {
     }
 
     /**
-     * Feeds the flywheel droop detector one fast sample. Scheduled by {@link Robot} at
-     * {@link ShooterSubsystem#flywheelSamplePeriodSeconds()}, far faster than the main loop — see
-     * {@link ShooterSubsystem#sampleFlywheelDroop()} for why it cannot live in periodic().
-     */
-    public void sampleFlywheelDroop() {
-        shooter.sampleFlywheelDroop();
-    }
-
-    /** How often {@link #sampleFlywheelDroop()} wants to be called, in seconds. */
-    public static double flywheelSamplePeriodSeconds() {
-        return ShooterSubsystem.flywheelSamplePeriodSeconds();
-    }
-
-    /**
      * Persists the flywheel's learned droop curve. Called from {@link Robot#disabledInit()} so what
      * the robot learned this match is still there after the power cycle before the next one.
      */

@@ -26,13 +26,11 @@ public class Robot extends TimedRobot {
     public Robot() {
         m_robotContainer = new RobotContainer();
 
-        // The flywheel droop detector runs far faster than the main loop. A ball is in contact with
-        // the wheel for roughly 10-25 ms, so at 50 Hz the dip it produces is at most one sample
-        // wide — the detector would miss most shots and mis-measure the rest. This callback is
-        // interleaved with the main loop on the same thread, so nothing here needs locking.
-        addPeriodic(
-            m_robotContainer::sampleFlywheelDroop,
-            RobotContainer.flywheelSamplePeriodSeconds());
+        // No fast periodic callback for the flywheel droop detector: it samples on its own thread,
+        // woken by each velocity frame as it arrives rather than by a timer. An addPeriodic callback
+        // is interleaved with this loop on this thread, so a loop overrun starves it and frames are
+        // lost in exactly the bursts of activity that accompany shooting — see
+        // ShooterSubsystem.flywheelSamplerLoop().
     }
 
     @Override

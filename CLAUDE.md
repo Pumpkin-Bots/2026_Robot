@@ -109,9 +109,27 @@ extrapolating. Learning freezes while the motor is voltage-saturated, since aski
 wheel for more speed cannot produce any. Cold start falls back to a physics seed from
 `FLYWHEEL_MOI_KG_M2`; inert in simulation (maple-sim projectiles leave at exactly wheel speed).
 
-The detector runs at **200 Hz** via `Robot.addPeriodic`, not the 50 Hz main loop, and the flywheel
-velocity signal is published at 200 Hz to match — a ball's contact is 10–25 ms, so at loop rate the
-trough is one sample wide and usually missed. Lowering either rate breaks it.
+The velocity signal is published at **200 Hz** and the detector consumes **every frame of it exactly
+once**, on its own real-time thread (`ShooterSubsystem.flywheelSamplerLoop`) blocking on
+`BaseStatusSignal.waitForAll`. Both halves are load-bearing. A ball's contact is 10–25 ms, so the
+trough is 2–5 frames wide: at the 50 Hz loop rate it is one sample wide and usually missed, and
+dropping even one or two frames *moves* the apparent minimum rather than blurring it — the detector
+then learns a confidently wrong number instead of no number.
+
+Being woken by frame arrival is what rules out the two ways a fast *timer* loses samples, neither of
+which `setUpdateFrequency` can fix (Phoenix caches one frame per signal, with no queue): a 200 Hz
+poll and a 200 Hz publisher are independent clocks that beat, reading some frames twice and missing
+others; and `addPeriodic` callbacks are interleaved with the main loop on the same thread, so any
+loop overrun starves the sampler and several frames land with only the last surviving — worst
+exactly when the robot is busy, i.e. shooting. `Shooter/Flywheel/Sampler/Hz` is the *distinct* frame
+rate and should read 200; `Sampler/Gaps` counts frames published and never read and should stay
+flat. Lowering the publish rate, or moving the sampler back onto the main thread, breaks this.
+
+Two consequences of the thread: `FlywheelDroopCompensator` is `synchronized` on every public method
+(the learned curve is a `double[]` and an `InterpolatingDoubleTreeMap` that must agree, and an
+unlocked reader risks a torn double or a hang inside the tree map), and
+`getShooterFlywheelVelocityRps()` reads the signal's **cache** rather than calling the no-arg
+`getVelocity()`, which refreshes — two threads refreshing one `StatusSignal` is not safe.
 
 A flywheel command of **zero** coasts rather than holding zero. Trench, defense, and storage all ask
 for zero, and the velocity loop reads that as a real command: it drags a spinning wheel down with
@@ -128,6 +146,13 @@ a wheel or belt change is invisible to that, so `Shooter/Flywheel/ClearLearned` 
 curve and the file. Nothing is written in simulation. The curve is published per-bin under
 `Shooter/Flywheel/Bins/` (Elastic has no XY plot, so one graph widget over that folder shows the
 bins converging) and as arrays under `Shooter/Flywheel/Curve/` for AdvantageScope.
+
+There are two resets and they are not interchangeable. `Shooter/Flywheel/ClearLearned` clears the
+**collected droop data** — live curve and saved file. `Shooter/Flywheel/Sampler/ResetStats` zeroes
+the **sampler diagnostics** only (`Samples`/`Gaps`/`Timeouts`/`Faults`), which are cumulative since
+boot and otherwise can't tell you whether the sampler is healthy *now*. Both are momentary
+`DashboardToggle`s. The counters are owned by the sampler thread, so the button only raises a flag
+and the thread clears them itself between samples.
 
 `FLYWHEEL_EFFECTIVE_DIAMETER_METERS` is **derived**, not hand-entered — it is the single point where
 motor RPS becomes ball speed, and it carries both the 28:18 motor reduction and the 28:18

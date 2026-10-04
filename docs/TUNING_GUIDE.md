@@ -135,11 +135,43 @@ Then sanity-check the physics the detector is reporting:
   tracking something that isn't a ball. Go back and fix detection.
 - `Shooter/Flywheel/RejectedCount` — a high ratio to `ShotCount` means a threshold is wrong.
 
-**Exit test:** both counts correct, contact time plausible, rejections rare.
+Before trusting any of the above, check the sampler is actually seeing the whole dip:
 
-> **Don't lower the sample rates.** The detector runs at 200 Hz on its own `addPeriodic` callback and
-> the velocity signal publishes at 200 Hz to match. A ball's contact is 10–25 ms; at the 50 Hz main
-> loop rate the trough is one sample wide and usually missed entirely.
+- `Shooter/Flywheel/Sampler/Hz` — should sit at `TargetHz` (200) whenever the robot is on. This is
+  *distinct* frames per second, not callbacks per second.
+- `Shooter/Flywheel/Sampler/Gaps` — frames that were published and never read. Should stay flat.
+  Any climb means the trough is being measured off an incomplete picture, and every number below it
+  is suspect.
+- `Shooter/Flywheel/Sampler/Timeouts` — flat on a real robot. Climbing means the velocity signal
+  isn't being published near 200 Hz, so look at the signal's update frequency, not the detector.
+  (In simulation this is the normal path and will climb — the signals come from the sim loop rather
+  than from a bus.)
+- `Shooter/Flywheel/Sampler/Faults` — any value above zero is a bug. The sampler caught an exception
+  and kept going rather than dying silently.
+
+Those counters are cumulative since boot, so a total from an hour ago tells you nothing about now.
+**`Shooter/Flywheel/Sampler/ResetStats`** (momentary toggle, always live) zeroes all four so you can
+watch one clean window — e.g. reset, fire a batch, and confirm `Gaps` is still zero afterwards.
+
+> Two different resets, don't confuse them. `Sampler/ResetStats` clears **diagnostics only** and
+> touches nothing the robot has learned. **`Shooter/Flywheel/ClearLearned`** is the one that clears
+> the collected droop data itself — the live curve *and* its saved file. Use that one after changing
+> a wheel or a belt; see stage 4.
+
+**Exit test:** `Hz` at 200 with `Gaps` flat, both counts correct, contact time plausible, rejections
+rare.
+
+> **Don't lower the sample rates.** The velocity signal publishes at 200 Hz and the detector consumes
+> every frame of it, exactly once each, on its own real-time thread. A ball's contact is 10–25 ms, so
+> the trough is only 2–5 frames wide: at the 50 Hz main loop rate it is one sample wide and usually
+> missed entirely, and dropping even one or two frames *moves* the apparent minimum rather than just
+> blurring it — which makes the detector learn a confidently wrong number instead of no number.
+>
+> Note that raising `setUpdateFrequency` alone would not have fixed a sampling problem, and lowering
+> it is not the only way to create one. Phoenix caches one frame per signal with no queue, so what
+> matters is that something is there to read each frame as it lands. That is why the sampler blocks
+> on `BaseStatusSignal.waitForAll` — woken by the data — instead of polling on a timer, where two
+> independent clocks beat against each other and a main-loop overrun silently eats frames.
 
 ---
 
@@ -442,6 +474,11 @@ through the moment the wheel is back.
 | `Bins/<lo>-<hi>Rps` | Learned deficit per speed bin. **Put the whole folder on one Elastic graph** to watch them converge. |
 | `Curve/BinCenterRps` + `Curve/BinDeficitRps` | The measured curve as arrays, for an AdvantageScope XY plot |
 | `Curve/SampleRps` + `Curve/CompensationRps` | What will actually be added at each speed — after gain, clamp and extrapolation |
+| `Sampler/Hz` vs `Sampler/TargetHz` | **Distinct** velocity frames consumed per second, against the 200 Hz the signal publishes at. Should match. Reads zero if the sampler thread has stopped. |
+| `Sampler/Gaps` | Frames published and never read. **Should stay flat** — any climb and the trough is being measured off an incomplete dip. |
+| `Sampler/Timeouts` | No frame inside several periods. Flat on a real robot; climbs in sim, where signals come from the sim loop. |
+| `Sampler/Faults` | Exceptions the sampler caught and carried on through. Anything above zero is a bug. |
+| `Sampler/Samples` | Frames consumed since boot or since the last `ResetStats` |
 | `Store/Restored` | This boot started from a saved curve, not the physics seed |
 | `Store/Status` | Why, in one line: `loaded 47 balls`, `no saved file`, `different shooter geometry - discarded` |
 | `Store/Unsaved` | New balls not yet written to disk. Clears on disable. |
@@ -549,6 +586,8 @@ Power/BrownoutProtectionEnabled           ON
 Shooter/HoldFeedUntilAtSpeed              OFF
 Shooter/MotionRackFirst                   ON       off = flywheel carries motion again
 Shooter/TrenchTowerStorageEnabled         ON
+Shooter/Flywheel/ClearLearned             -        momentary; wipes the learned curve AND its file
+Shooter/Flywheel/Sampler/ResetStats       -        momentary; zeroes sampler diagnostics only
 ```
 
 **Source-only, must be measured or edited in `Constants.java`:**

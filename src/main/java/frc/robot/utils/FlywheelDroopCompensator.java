@@ -91,6 +91,22 @@ import frc.robot.constants.Constants.ShooterConstants;
  * practice balls is still correct after the power cycle between matches, and the alternative is
  * starting every match back on the physics seed. Saves are queued after a burst of shooting
  * settles, and forced whenever the robot is disabled.
+ *
+ * <h2>Threading</h2>
+ *
+ * <p>This class is accessed from two threads and every public method is {@code synchronized} on the
+ * instance to match. {@link #update} is called from the flywheel's own sampler thread — it has to
+ * be, because a sample that waits for the main loop is a sample that arrives after the trough has
+ * passed (see {@code ShooterSubsystem.flywheelSamplerLoop()}). Everything else — the bias asked for
+ * when commanding the wheel, the readiness check, the counters, the save on disable — is called
+ * from the robot thread.
+ *
+ * <p>The lock is not decorative. The learned curve lives in two places that must agree, a
+ * {@code double[]} and an {@code InterpolatingDoubleTreeMap}, and {@link #learnedDeficitRps} walks
+ * both. A tree map read concurrently with a put can see a half-relinked node and loop or throw, and
+ * a non-volatile {@code double} write is not guaranteed atomic — so an unlocked reader risks both a
+ * torn number and a hang, on the path that decides how fast to spin the shooter. It is held for a
+ * few microseconds at a time, and both threads' worst case is a sub-millisecond wait.
  */
 public class FlywheelDroopCompensator {
 
@@ -343,9 +359,12 @@ public class FlywheelDroopCompensator {
     /**
      * Folds one velocity sample into the estimate.
      *
-     * <p>Call this <b>far faster than the main robot loop</b> — a ball is in contact with the wheel
-     * for something like 10-25 ms, so at 50 Hz the trough is at most one sample wide and usually
-     * missed entirely. See {@code ShooterSubsystem.sampleFlywheelDroop()}.
+     * <p>Call this <b>once per published velocity frame</b>, far faster than the main robot loop — a
+     * ball is in contact with the wheel for something like 10-25 ms, so at 50 Hz the trough is at
+     * most one sample wide and usually missed entirely, and even at the full frame rate a sampler
+     * that drops frames moves the apparent minimum rather than merely blurring it. See
+     * {@code ShooterSubsystem.flywheelSamplerLoop()}, which is what calls this and why it does so
+     * from its own thread.
      *
      * @param setpointRps what the velocity loop was actually told to hold, in motor RPS — the
      *     compensated figure, not the raw aim target, since that is what the wheel is chasing
@@ -353,7 +372,7 @@ public class FlywheelDroopCompensator {
      * @param dutyCycle   the motor's applied output as a fraction of supply, for the saturation
      *     check; learning is frozen when the motor has no headroom left to give
      */
-    public void update(double setpointRps, double measuredRps, double dutyCycle) {
+    public synchronized void update(double setpointRps, double measuredRps, double dutyCycle) {
         double now = Timer.getFPGATimestamp();
         double dt = m_lastUpdateTime < 0.0 ? 0.005 : Math.max(1e-4, now - m_lastUpdateTime);
         m_lastUpdateTime = now;
@@ -512,6 +531,12 @@ public class FlywheelDroopCompensator {
      * Handles the saved copy: honours a clear request, and writes the curve out once shooting has
      * settled. Runs at {@link #STORE_SERVICE_PERIOD_SECONDS} rather than at sample rate — none of it
      * needs to be prompt, and the detector's 200 Hz budget is not the place to poll NetworkTables.
+     *
+     * <p>This is reached from the sampler thread, and the file write itself is handed to the store's
+     * own background writer — but the serialisation ahead of it is not free, and it does cost the
+     * sampler one frame when it happens. {@link #AUTOSAVE_QUIET_SECONDS} is what makes that safe: a
+     * save only goes out once no ball has been seen for a couple of seconds, so the frame it costs
+     * can never be one from inside a shot.
      */
     private void serviceStore(double now) {
         if (now - m_lastStoreServiceTime < STORE_SERVICE_PERIOD_SECONDS) {
@@ -537,7 +562,7 @@ public class FlywheelDroopCompensator {
      * {@code disabledInit()} — the gap between matches is exactly when the robot gets power-cycled,
      * and it is the one moment where a save is certain to be both wanted and free.
      */
-    public void saveIfDirty() {
+    public synchronized void saveIfDirty() {
         if (m_dirty) {
             save(Timer.getFPGATimestamp());
         }
@@ -563,7 +588,7 @@ public class FlywheelDroopCompensator {
      *
      * @param targetRps the speed the aim solution asked for, in motor RPS
      */
-    public double compensationRps(double targetRps) {
+    public synchronized double compensationRps(double targetRps) {
         if (targetRps < m_minDetectRps.get()) {
             return 0.0;
         }
@@ -595,7 +620,7 @@ public class FlywheelDroopCompensator {
      * one measurement with speed — the ball-drain half of the physics, and the best a single point
      * supports. With none, the cold-start physics seed.
      */
-    public double learnedDeficitRps(double targetRps) {
+    public synchronized double learnedDeficitRps(double targetRps) {
         if (!m_haveAnyBin) {
             return m_seedFraction * targetRps;
         }
@@ -661,22 +686,22 @@ public class FlywheelDroopCompensator {
     }
 
     /** True when the wheel is within {@code AtSpeedToleranceRps} of the speed it is being held to. */
-    public boolean isAtSpeed() {
+    public synchronized boolean isAtSpeed() {
         return m_atSpeed;
     }
 
     /** True while the motor has no voltage headroom left — the shot may simply be unachievable. */
-    public boolean isSaturated() {
+    public synchronized boolean isSaturated() {
         return m_saturated;
     }
 
     /** Balls the detector has accepted since boot. Compare against balls actually fired. */
-    public int getShotCount() {
+    public synchronized int getShotCount() {
         return m_shotCount;
     }
 
     /** Trough depth below setpoint on the most recent ball, motor RPS — what is being learned. */
-    public double getLastTroughDeficitRps() {
+    public synchronized double getLastTroughDeficitRps() {
         return m_lastTroughDeficitRps;
     }
 
@@ -687,7 +712,7 @@ public class FlywheelDroopCompensator {
      * stays roughly constant ball to ball while the absolute deficit accumulates, and it is the
      * absolute one that sets how fast the ball leaves.
      */
-    public double getLastPerBallDropRps() {
+    public synchronized double getLastPerBallDropRps() {
         return m_lastPerBallDropRps;
     }
 
@@ -696,12 +721,12 @@ public class FlywheelDroopCompensator {
      * Expect something in the 10-25 ms range; far more than that means the detector is picking up
      * something that is not a ball.
      */
-    public double getLastContactSeconds() {
+    public synchronized double getLastContactSeconds() {
         return m_lastContactSeconds;
     }
 
     /** Commanded speed at the middle of each learning bin, motor RPS — the curve's x axis. */
-    public double[] getBinCenterRps() {
+    public synchronized double[] getBinCenterRps() {
         double[] centers = new double[BIN_COUNT];
         for (int bin = 0; bin < BIN_COUNT; bin++) {
             centers[bin] = binCenterRps(bin);
@@ -710,22 +735,22 @@ public class FlywheelDroopCompensator {
     }
 
     /** Learned trough deficit in each bin, motor RPS. Zero where nothing has been measured yet. */
-    public double[] getBinDeficitRps() {
+    public synchronized double[] getBinDeficitRps() {
         return java.util.Arrays.copyOf(m_binDeficitRps, BIN_COUNT);
     }
 
     /** Balls measured in each bin. Zero means that bin's deficit is a placeholder, not a number. */
-    public int[] getBinSamples() {
+    public synchronized int[] getBinSamples() {
         return java.util.Arrays.copyOf(m_binSamples, BIN_COUNT);
     }
 
     /** True if a saved curve from a previous boot was found and accepted. */
-    public boolean wasRestoredFromDisk() {
+    public synchronized boolean wasRestoredFromDisk() {
         return m_store.wasLoaded();
     }
 
     /** Number of speed bins that have at least one measured ball in them. */
-    public int getPopulatedBinCount() {
+    public synchronized int getPopulatedBinCount() {
         int populated = 0;
         for (int samples : m_binSamples) {
             if (samples > 0) {
@@ -746,7 +771,7 @@ public class FlywheelDroopCompensator {
      * {@code Shooter/Flywheel/ClearLearned} switch, for when the hardware has changed underneath the
      * numbers.
      */
-    public void reset() {
+    public synchronized void reset() {
         java.util.Arrays.fill(m_binDeficitRps, 0.0);
         java.util.Arrays.fill(m_binSamples, 0);
         m_deficitBySpeed.clear();

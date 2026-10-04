@@ -1,6 +1,7 @@
 package frc.robot.subsystems;
 
 import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusCode;
 import com.ctre.phoenix6.StatusSignal;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.Slot0Configs;
@@ -28,6 +29,8 @@ import edu.wpi.first.units.Units;
 import edu.wpi.first.units.measure.AngularVelocity;
 import edu.wpi.first.wpilibj.RobotBase;
 import edu.wpi.first.wpilibj.RobotController;
+import edu.wpi.first.wpilibj.Threads;
+import edu.wpi.first.wpilibj.Timer;
 import edu.wpi.first.wpilibj.simulation.FlywheelSim;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -36,6 +39,7 @@ import frc.robot.constants.Constants;
 import frc.robot.utils.AimSolver;
 import frc.robot.utils.AimSolver.AimSolution;
 import frc.robot.utils.AimSolver.ArcPolicy;
+import frc.robot.utils.DashboardToggle;
 import frc.robot.utils.FlywheelDroopCompensator;
 import frc.robot.utils.ShooterTuning;
 import frc.robot.utils.TunableDouble;
@@ -69,17 +73,39 @@ public class ShooterSubsystem implements Subsystem {
     // droop compensator says it takes for the ball to leave at that number. Distinct from
     // m_commandedFlywheelRps, which stays the aim figure so callers asking "is the shooter parked"
     // and the telemetry comparing solution against reality both keep meaning what they meant.
-    private double m_flywheelSetpointRps = 0.0;
+    // Volatile because the droop sampler reads it from its own thread — see flywheelSamplerLoop().
+    private volatile double m_flywheelSetpointRps = 0.0;
     private final FlywheelDroopCompensator m_droopCompensator = new FlywheelDroopCompensator();
 
     /**
-     * Rate the flywheel's velocity is published and sampled at, Hz. Set by the width of the thing
-     * being measured: a ball's contact with the wheel lasts on the order of 10-25 ms, so anything
-     * near the 50 Hz main loop rate cannot see the dip at all. See the constructor.
+     * Rate the flywheel's velocity is published at, Hz. Set by the width of the thing being
+     * measured: a ball's contact with the wheel lasts on the order of 10-25 ms, so anything near
+     * the 50 Hz main loop rate cannot see the dip at all. See the constructor.
+     *
+     * <p>Every frame published at this rate is consumed exactly once — that is what
+     * {@link #flywheelSamplerLoop()} is for, and it is a stronger statement than "the detector runs
+     * at 200 Hz". A detector merely *polling* at the publish rate is two independent clocks beating
+     * against each other: it reads some frames twice and never sees others at all.
      */
     private static final double kFlywheelSampleHz = 200.0;
 
-    /** Registered once so the fast sampler can refresh them without going through the motor object. */
+    /**
+     * How long the sampler blocks for a frame before taking whatever it last received, seconds.
+     *
+     * <p>Several publish periods, deliberately. On a live bus the wait is satisfied every period and
+     * this never expires. It exists so a motor that has gone quiet — unplugged, powered down, or a
+     * simulation where the signals are driven by the sim loop rather than by a bus — leaves the
+     * thread going round and the telemetry alive instead of parking it forever.
+     */
+    private static final double kFlywheelSampleTimeoutSeconds = 5.0 / kFlywheelSampleHz;
+
+    /**
+     * Longest frame-to-frame spacing that still counts as consecutive, seconds. Past this, a frame
+     * was published that nothing read — see {@code Shooter/Flywheel/Sampler/Gaps}.
+     */
+    private static final double kFlywheelSampleGapSeconds = 1.5 / kFlywheelSampleHz;
+
+    /** Registered once so the sampler can refresh them without going through the motor object. */
     private final StatusSignal<AngularVelocity> m_flywheelVelocity;
 
     /**
@@ -89,6 +115,36 @@ public class ShooterSubsystem implements Subsystem {
      * not achievable at this gearing.
      */
     private final StatusSignal<Double> m_flywheelDutyCycle;
+
+    // Sampler health, published under Shooter/Flywheel/Sampler/. Written only by the sampler thread
+    // and read only by periodic(); volatile is enough because each is a standalone counter — the
+    // main thread needs each read to see a whole, current value, not a consistent set of all four.
+    private volatile long m_flywheelSampleCount = 0;
+    private volatile long m_flywheelSampleTimeouts = 0;
+    private volatile long m_flywheelSampleGaps = 0;
+    private volatile long m_flywheelSampleFaults = 0;
+
+    /** Set by the robot thread, acted on and cleared by the sampler thread, which owns the counters. */
+    private volatile boolean m_flywheelSamplerResetRequested = false;
+
+    /**
+     * Zeroes the sampler's counters so a fresh window can be watched — the counters are cumulative
+     * since boot, and a {@code Gaps} total from a tuning session an hour ago says nothing about
+     * whether the sampler is healthy right now.
+     *
+     * <p>Diagnostics only. This clears nothing the robot has <i>learned</i>; for that, see
+     * {@code Shooter/Flywheel/ClearLearned}, which wipes the live curve and the saved file.
+     * Momentary — it puts itself back to false once acted on.
+     */
+    private final DashboardToggle m_samplerStatsReset =
+        new DashboardToggle("Shooter/Flywheel/Sampler/ResetStats", false);
+
+    // Rate measurement, robot thread only — see publishSamplerTelemetry() for why it lives here
+    // rather than in the sampler.
+    private static final double kSamplerRateWindowSeconds = 0.5;
+    private double m_samplerWindowStart = 0.0;
+    private long m_samplerWindowStartCount = 0;
+    private volatile double m_flywheelMeasuredSampleHz = 0.0;
 
     /**
      * Whether the flywheel motor holds a Phoenix Pro license, published as
@@ -454,6 +510,9 @@ public class ShooterSubsystem implements Subsystem {
         // rest, which is worse than missing them — it would learn a confidently wrong number. At
         // 200 Hz a contact spans 2-5 samples, and the Hoot log captures the dip's actual shape,
         // which is how the contact time itself gets measured.
+        //
+        // Publishing at 200 Hz only puts the frames on the bus. Reading every one of them is
+        // flywheelSamplerLoop()'s job.
         m_flywheelVelocity = m_shooterFlywheelMotor.getVelocity();
         m_flywheelDutyCycle = m_shooterFlywheelMotor.getDutyCycle();
         BaseStatusSignal.setUpdateFrequencyForAll(
@@ -483,6 +542,13 @@ public class ShooterSubsystem implements Subsystem {
         } else {
             m_flywheelSim = null;
         }
+
+        // Started last, so everything the loop touches is fully constructed before it runs. Daemon,
+        // so it never holds up a JVM shutdown and never needs an explicit stop.
+        m_samplerWindowStart = Timer.getFPGATimestamp();
+        Thread sampler = new Thread(this::flywheelSamplerLoop, "FlywheelDroopSampler");
+        sampler.setDaemon(true);
+        sampler.start();
     }
 
     /**
@@ -1055,7 +1121,12 @@ public class ShooterSubsystem implements Subsystem {
      * <p>See {@link #getFlywheelWheelRps()} for what the wheel itself is doing.
      */
     public double getShooterFlywheelVelocityRps() {
-        return m_shooterFlywheelMotor.getVelocity().getValueAsDouble();
+        // A cached read, deliberately. The no-argument getVelocity() refreshes the signal, and that
+        // is the same signal object flywheelSamplerLoop() refreshes from its own thread — two
+        // threads refreshing one StatusSignal is not safe. Nothing is lost by reading the cache:
+        // the sampler refreshes it every 5 ms, so this is fresher than anything a 20 ms loop could
+        // have fetched for itself.
+        return m_flywheelVelocity.getValueAsDouble();
     }
 
     /**
@@ -1094,29 +1165,162 @@ public class ShooterSubsystem implements Subsystem {
     }
 
     /**
-     * Feeds one fresh velocity sample to the droop detector. Scheduled at
-     * {@link #kFlywheelSampleHz} from {@code Robot}, NOT from {@code periodic()} — a ball's whole
-     * contact with the wheel fits inside a single 50 Hz loop, so a detector running at loop rate is
-     * measuring an event it cannot see.
+     * Feeds the droop detector <b>every</b> velocity frame the flywheel publishes, exactly once
+     * each, on its own thread. Runs for the life of the robot program.
      *
-     * <p>Runs on the main robot thread (WPILib's {@code addPeriodic} callbacks are interleaved with
-     * the main loop, not threaded), so there is no synchronisation to think about against the
-     * commands that write {@code m_flywheelSetpointRps}.
+     * <h2>Why not a fast periodic callback</h2>
      *
-     * <p>The setpoint it compares against is whatever the last command loop commanded, which is the
-     * right pairing: the wheel is chasing that number for the whole 20 ms until the next one.
+     * <p>Setting the signal's update frequency to {@link #kFlywheelSampleHz} puts a frame on the bus
+     * every 5 ms, but that alone does not mean anything reads them. Phoenix caches exactly one frame
+     * per signal and {@code refreshAll()} hands back whatever is in that cache — there is no queue
+     * to catch up from. So a sampler has to be there when each frame lands, and a periodic callback
+     * is not:
+     *
+     * <ul>
+     *   <li><b>Two clocks beating.</b> A 200 Hz callback and a 200 Hz publisher drift freely against
+     *       each other. Where they happen to land close together the sampler reads the same frame
+     *       twice and misses the next one entirely — so the nominal rate is 200 Hz and the distinct
+     *       rate is whatever the beat leaves, varying over seconds.
+     *   <li><b>Main-loop starvation.</b> {@code addPeriodic} callbacks are interleaved with the main
+     *       loop on the same thread, not threaded. A 20 ms loop that overruns — vision, a heavy
+     *       command — blocks the sampler for its whole duration, several frames land, and only the
+     *       last survives. That hits hardest exactly when the robot is busy, which is when it is
+     *       shooting.
+     * </ul>
+     *
+     * <p>Both of those lose samples a few milliseconds wide, and a few milliseconds is the entire
+     * event: contact is 10-25 ms, so the trough is 2-5 frames. Dropping one or two does not blur the
+     * measurement, it relocates the minimum — the detector then learns a confidently wrong number
+     * rather than no number, which is the worse of the two failures.
+     *
+     * <p>{@code waitForAll} fixes this at the root by inverting who drives: it blocks until the next
+     * frame actually arrives, so the thread is woken by the data instead of guessing when to look.
+     * One wake-up, one frame, no duplicates and no misses. Real-time priority is what keeps that
+     * true while the main loop is overrunning.
+     *
+     * <h2>What it samples against</h2>
+     *
+     * <p>Only the velocity signal is waited on — it is the thing being measured. The duty cycle is
+     * refreshed alongside it from the local cache, which costs no bus traffic and needs no
+     * synchronising with velocity frames: it feeds a half-second low-pass, so being up to one frame
+     * stale is immaterial.
+     *
+     * <p>The setpoint it compares against is whatever the command loop last asked for. That is the
+     * right pairing — the wheel is chasing that number for the whole 20 ms until the next one — and
+     * it is why {@code m_flywheelSetpointRps} is volatile.
      */
-    public void sampleFlywheelDroop() {
-        BaseStatusSignal.refreshAll(m_flywheelVelocity, m_flywheelDutyCycle);
-        m_droopCompensator.update(
-            m_flywheelSetpointRps,
-            m_flywheelVelocity.getValueAsDouble(),
-            m_flywheelDutyCycle.getValueAsDouble());
+    private void flywheelSamplerLoop() {
+        // Real-time priority 1, the same band CTRE's own odometry thread uses. Not about speed: it
+        // is what stops a main loop that overruns from pushing this thread's wake-up past the next
+        // frame, which is the starvation case above.
+        Threads.setCurrentThreadPriority(true, 1);
+
+        double lastFrameTime = 0.0;
+
+        while (true) {
+            // The whole body is guarded. An exception escaping here would end the thread, and a
+            // dead sampler is a silent failure of the worst kind: the shooter keeps shooting, the
+            // compensator keeps handing out its last learned curve, and nothing says the
+            // measurement behind it stopped. Counting the fault and going round again keeps the
+            // robot shooting and puts the problem on the dashboard. The loop cannot spin hot on a
+            // repeated fault either — waitForAll paces it whether it succeeds or throws.
+            try {
+                StatusCode status =
+                    BaseStatusSignal.waitForAll(kFlywheelSampleTimeoutSeconds, m_flywheelVelocity);
+
+                if (status.isOK()) {
+                    m_flywheelSampleCount++;
+                } else {
+                    // Nothing arrived in several periods. Refresh by hand so the sample below is at
+                    // least the freshest thing available, and count it: on a real robot a climbing
+                    // timeout count means the signal is not being published anywhere near the rate
+                    // the detector assumes, which invalidates every droop number it produces. In
+                    // simulation the signals are fed by the sim loop rather than by a bus, so this
+                    // is the normal path there and the count is expected to climb.
+                    m_flywheelSampleTimeouts++;
+                    BaseStatusSignal.refreshAll(m_flywheelVelocity, m_flywheelDutyCycle);
+                }
+
+                // Spacing between the frames themselves, from the frame's own timestamp rather than
+                // from when this thread woke up — the difference being that the former can prove a
+                // frame was skipped and the latter only says this thread was late. This is the
+                // number that separates "200 samples a second" from "200 distinct samples a
+                // second", so it is the one to watch to confirm the detector sees the whole dip.
+                double frameTime = m_flywheelVelocity.getTimestamp().getTime();
+                if (lastFrameTime > 0.0 && frameTime - lastFrameTime > kFlywheelSampleGapSeconds) {
+                    m_flywheelSampleGaps++;
+                }
+                lastFrameTime = frameTime;
+
+                m_flywheelDutyCycle.refresh();
+                m_droopCompensator.update(
+                    m_flywheelSetpointRps,
+                    m_flywheelVelocity.getValueAsDouble(),
+                    m_flywheelDutyCycle.getValueAsDouble());
+
+                // Acted on here rather than where the button is read, so the counters are only ever
+                // written by this thread and a reset cannot land halfway through a sample.
+                if (m_flywheelSamplerResetRequested) {
+                    m_flywheelSamplerResetRequested = false;
+                    m_flywheelSampleCount = 0;
+                    m_flywheelSampleGaps = 0;
+                    m_flywheelSampleTimeouts = 0;
+                    m_flywheelSampleFaults = 0;
+                    lastFrameTime = 0.0;
+                }
+            } catch (RuntimeException e) {
+                m_flywheelSampleFaults++;
+            }
+        }
     }
 
-    /** The rate {@link #sampleFlywheelDroop()} expects to be called at, in seconds per call. */
-    public static double flywheelSamplePeriodSeconds() {
-        return 1.0 / kFlywheelSampleHz;
+    /**
+     * Publishes whether the droop detector is actually seeing every frame, which is the difference
+     * between a learned curve worth trusting and one measured off a dip the sampler only partly saw.
+     *
+     * <p>What to expect: {@code Hz} at {@link #kFlywheelSampleHz} whenever the robot is on, and
+     * {@code Gaps}, {@code Timeouts} and {@code Faults} all flat. {@code Gaps} counts frames that
+     * were published and never read. Climbing {@code Timeouts} with a low {@code Hz} on a real robot
+     * points at the signal's update frequency rather than at the detector; any {@code Faults} at all
+     * means the sampler caught an exception, which is a bug.
+     *
+     * <p>{@code Hz} is deliberately computed <i>here</i>, on the robot thread, from a counter the
+     * sampler increments — not by the sampler itself. A rate the sampler calculates is a rate that
+     * freezes at its last value if that thread ever stops, which is precisely the failure the
+     * readout exists to catch; measured from this side, a stopped sampler reads zero within a second.
+     */
+    private void publishSamplerTelemetry() {
+        if (m_samplerStatsReset.get()) {
+            m_samplerStatsReset.set(false);
+            // Only raise the flag and blank the rate. The counters are the sampler thread's to
+            // clear, and this window is deliberately left alone: re-baselining it here, while the
+            // counters are still at their old totals for the next few milliseconds, would measure
+            // a whole boot's worth of samples over half a second and publish a rate in the
+            // thousands. The backward-count check below picks the new baseline up instead.
+            m_flywheelSamplerResetRequested = true;
+            m_flywheelMeasuredSampleHz = 0.0;
+        }
+
+        double now = Timer.getFPGATimestamp();
+        long samples = m_flywheelSampleCount;
+        // A count that went backwards is a reset the sampler has already acted on; re-baseline onto
+        // it rather than reporting a negative rate for the rest of the window.
+        if (samples < m_samplerWindowStartCount) {
+            m_samplerWindowStartCount = samples;
+            m_samplerWindowStart = now;
+        } else if (now - m_samplerWindowStart >= kSamplerRateWindowSeconds) {
+            m_flywheelMeasuredSampleHz =
+                (samples - m_samplerWindowStartCount) / (now - m_samplerWindowStart);
+            m_samplerWindowStartCount = samples;
+            m_samplerWindowStart = now;
+        }
+
+        SmartDashboard.putNumber("Shooter/Flywheel/Sampler/Hz", m_flywheelMeasuredSampleHz);
+        SmartDashboard.putNumber("Shooter/Flywheel/Sampler/TargetHz", kFlywheelSampleHz);
+        SmartDashboard.putNumber("Shooter/Flywheel/Sampler/Samples", m_flywheelSampleCount);
+        SmartDashboard.putNumber("Shooter/Flywheel/Sampler/Gaps", m_flywheelSampleGaps);
+        SmartDashboard.putNumber("Shooter/Flywheel/Sampler/Timeouts", m_flywheelSampleTimeouts);
+        SmartDashboard.putNumber("Shooter/Flywheel/Sampler/Faults", m_flywheelSampleFaults);
     }
 
     /**
@@ -1226,6 +1430,7 @@ public class ShooterSubsystem implements Subsystem {
     @Override
     public void periodic() {
         publishTiltTelemetry();
+        publishSamplerTelemetry();
 
         SmartDashboard.putBoolean(
             "Shooter/Flywheel/FocActive", m_flywheelProLicensed.refresh().getValue());
