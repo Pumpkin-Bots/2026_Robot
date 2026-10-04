@@ -81,7 +81,7 @@ public final class Constants {
 
         // Padding added around the trench box before it counts as "in the trench". Grow this if
         // the shooter is still spinning up as the robot noses into the trench.
-        public static final double TRENCH_MARGIN_METERS = 0.30;
+        public static final double TRENCH_MARGIN_METERS = 0.15;
 
         // ---- Towers ----
         // A TOWER is built into each alliance wall between driver stations 2 and 3, 49.25 in wide
@@ -93,7 +93,7 @@ public final class Constants {
         public static final double RED_TOWER_CENTER_Y_METERS  = 4.107;
 
         // Padding around the tower box, same idea as TRENCH_MARGIN_METERS.
-        public static final double TOWER_MARGIN_METERS = 0.30;
+        public static final double TOWER_MARGIN_METERS = 0;
 
         // ---- Boundary hysteresis ----
         // Every zone test above is a hard edge, and a robot parked on one would otherwise flip
@@ -146,9 +146,9 @@ public final class Constants {
         public static final double RACK_KI = 0.0;
         public static final double RACK_KD = 0.25;
 
-        public static final double RACK_GEAR_RATIO = -1.0 / 333.33;
-        public static final double RACK_MIN_ANGLE = 15; // 15 deg
-        public static final double RACK_MAX_ANGLE = 42; // 45 deg
+        public static final double RACK_GEAR_RATIO = -1.0 / 250;
+        public static final double RACK_MIN_ANGLE = 18; // 15 deg
+        public static final double RACK_MAX_ANGLE = 38; // 45 deg
         // Rack gear ratio is backwards
         // MAX Rotations is at maximum height (lower shot)
         // MIN Rotations is at minimum height (higher shot)
@@ -229,7 +229,7 @@ public final class Constants {
         // hidden: watch Shooter/Physics/SpeedClamped and Shooter/Physics/Achievable. Shots inside
         // our own alliance zone are unaffected; they were nowhere near the ceiling before and are
         // still well under it.
-        public static final double FLYWHEEL_MAX_REV_PER_SEC = 80.0;
+        public static final double FLYWHEEL_MAX_REV_PER_SEC = 90.0;
         /**
          * Effective flywheel diameter, in meters, referenced to the MOTOR: the whole of
          * {@code launchSpeed = π · d · motorRps}. Every speed conversion in the project — the aim
@@ -373,7 +373,7 @@ public final class Constants {
         // reaches the target exactly at the apex of its arc, which at close range can arrive on
         // the way UP and skim the rim. Biasing steeper guarantees the ball is descending on
         // arrival. Raise if shots ride the rim, lower if they drop short and steep.
-        public static final double DESCENT_MARGIN_DEG = 12.0;
+        public static final double DESCENT_MARGIN_DEG = 8.0;
 
         // (2) Mechanical zero calibration. Pure command offsets applied AFTER the physics solve —
         // these correct "the rack reads 20 deg but is physically at 22 deg", not the physics.
@@ -393,7 +393,7 @@ public final class Constants {
         // (4) Final flywheel trim in motor RPS, applied after the speed→RPS conversion. Use this
         // for a small constant bias (e.g. ball compression losses at the exit roller) rather than
         // distorting FLYWHEEL_EFFECTIVE_DIAMETER_METERS, which also affects the sim projectile.
-        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = 0;
+        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = -3;
 
         // (5) Shoot-on-the-move authority, 0 to 1. 1.0 = fully compensate for robot velocity,
         // 0.0 = ignore it entirely (aim as if stopped). Set to 0 to isolate a stationary aiming
@@ -471,12 +471,12 @@ public final class Constants {
         // The physics solver takes a real z and solves for where the ball actually comes down;
         // borrowing the tag's height here (as this used to) told it to land the ball 1.2 m in the
         // air, which lands every pass short of where it was aimed.
-        public static final double SHUTTLE_TARGET_Z_METERS = 0.0;
+        public static final double SHUTTLE_TARGET_Z_METERS = 1;
 
         // How far to the side of the hub a shuttle pass lands. The pass is aimed to whichever side
         // of the hub the shooter is already on, so the ball stays off the hub structure and comes
         // down where a teammate on that side of the field can pick it up.
-        public static final double SHUTTLE_SIDE_OFFSET_METERS = 2.5;
+        public static final double SHUTTLE_SIDE_OFFSET_METERS = 2.0;
 
         // Rack angle held in storage/boost mode. RACK_MIN_ANGLE is the rack's lowest physical
         // position (0 rack rotations), which is where it has to be to fit under a trench arm.
@@ -487,7 +487,7 @@ public final class Constants {
         // which is a meter further back the robot can be standing when it takes one. The sideways
         // offset applied in ShuttleMode keeps the ball clear of the hub structure itself, so
         // landing level with the hub does not mean landing on it.
-        private static final double SHUTTLE_TARGET_MIDFIELD_OFFSET_METERS = 0.75;
+        private static final double SHUTTLE_TARGET_MIDFIELD_OFFSET_METERS = -0.75;
 
         public static final double BLUE_SHUTTLE_TARGET_X_METERS =
             TAG_26_POSE.getX() + SHUTTLE_TARGET_MIDFIELD_OFFSET_METERS;
