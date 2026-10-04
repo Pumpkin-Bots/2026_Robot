@@ -76,14 +76,24 @@ Watch `Shooter/Physics/TurretErrorDeg`.
 
 - `kP` up until it tracks crisply without hunting. Current 4.0; 12 was optimal but too violent for
   the wiring chain.
-- `kV` is the counter-rotation feedforward — the turret must spin at −ω to stay field-locked while
-  the robot turns. Raise until the turret holds its aim through a spin.
+- `kV` is the rate feedforward. It acts on the rate the *commanded angle* is sweeping at, which the
+  shot paths hand to the request directly (`Shooter/TurretRateDegPerSec`) — that is the chassis's
+  −ω, plus the bearing to the target rotating as the robot drives past it, plus the motion lead
+  growing and shrinking. Raise until the turret holds its aim through both a spin and a strafe.
 - `kS` breaks static friction symmetrically.
 - `kFF` is **one-directional**, for the direction the wiring chain spools against. Sign picks the
   direction, magnitude is volts. Only that direction gets help.
 
-**Exit test:** spin the robot in place at a decent rate with the turret commanded at a fixed field
-point. `TurretErrorDeg` should stay inside a couple of degrees.
+**Exit test, two parts** — and the second part is the one that matters, because `kP` here is
+deliberately a third of optimal and a detuned position loop trails a *moving* setpoint far more
+than it misses a still one:
+
+1. Spin the robot in place at a decent rate with the turret commanded at a fixed field point.
+   `TurretErrorDeg` should stay inside a couple of degrees.
+2. Strafe past the hub at a decent speed in shooter mode, both directions. `TurretErrorDeg` should
+   again stay inside a couple of degrees, and should not hold a steady sign for the whole pass.
+   A trail that sits on one side the whole way across is lag, not noise, and it always aims short
+   of the lead — the shot misses to the inside going either way.
 
 ### 1b. Rack — `Tuning/Rack/kP, kI, kD`
 
@@ -447,6 +457,7 @@ through the moment the wheel is back.
 | `ShotCount` wrong | Stage 2. Nothing downstream is trustworthy until this is right |
 | Aim drifts as robot turns | Turret `kV` (stage 1a) |
 | Good stationary, bad moving | `ShootOnTheMoveGain` (stage 5b) |
+| Under-led driving *across* the target, both directions, but fine driving at/away from it | Turret tracking lag, not the solve. Watch `Physics/TurretErrorDeg` against `Shooter/TurretRateDegPerSec` while strafing — stage 1a, `kP`/`kV` |
 | Bad only driving *away* from the target | `MotionRackSaturated` — the flywheel is carrying it and lagging; nothing to tune |
 | Bad only driving *at* the target | Rack tracking, not the solve. Watch `Physics/RackErrorDeg` |
 | Good on flat, bad on the depot | Tilt offsets (stage 0) then gain (stage 5c) |
@@ -491,6 +502,7 @@ for after a wheel or belt change, which the geometry signature can't detect.
 | Key | Meaning |
 |---|---|
 | `TurretErrorDeg` / `RackErrorDeg` / `FlywheelErrorRPS` | Solution vs reality. **Stage 1 lives here.** |
+| `Shooter/TurretRateDegPerSec` | Rate the commanded turret angle is sweeping, fed forward to the request. Plot against `TurretErrorDeg`: error that tracks this is lag |
 | `SpeedClamped` | Solution wants more than `FLYWHEEL_MAX_REV_PER_SEC` — check before trusting a long pass |
 | `RackClamped` | Rack against a stop |
 | `Feasible` / `Achievable` | The solver saying the shot can't be made from here |

@@ -92,6 +92,31 @@ candidate arc is an exact solution, so a bad search gives a shot that is harder 
 never one that misses. Operator switch `Shooter/MotionRackFirst` (default on) puts it all back on the
 flywheel; `Tuning/Shooter/MotionRackMaxSwingDeg` caps the steepening to protect hang time.
 
+### The turret is commanded with a rate, not just an angle
+Solving the shot right is only half of aiming it; the turret still has to *get* to the answer, and
+the answer moves. Driving across the target sweeps the commanded angle at roughly the bearing rate
+(velocity over distance) whether or not the chassis is rotating at all. `PositionVoltage` handles a
+ramping position command badly when its velocity setpoint says zero: kV contributes nothing toward
+the motion and kD brakes against it, so kP has to make up both out of error alone and the turret
+settles into a steady trail behind its setpoint. With `ROTATOR_KP` deliberately at a third of
+optimal (the wiring chain can't take 12), that trail is several degrees.
+
+Trailing a sweep always aims short of the lead, so the symptom is a shot that under-leads by the
+same amount driving either way across the target, and is unaffected driving straight at or away
+from it — radial motion is the one direction that leaves the bearing, and so the commanded angle,
+standing still. It looks exactly like a shoot-on-the-move gain that is too low, and is not.
+
+So `commandSolution` solves the shot **twice**: once from the current pose, once from where the
+robot will be one `TURRET_RATE_LOOKAHEAD_SECONDS` from now, and hands the difference to the request
+as its velocity setpoint (`Shooter/TurretRateDegPerSec`). Differencing two whole solves rather than
+differentiating the geometry by hand is what makes it complete — the commanded angle moves for three
+reasons at once (bearing rotating, chassis yawing, motion lead changing with range and heading) and
+all three come along for free. It is also noise-free: both solves run against the same sensor
+sample, so unlike differentiating the turret command against its own past there is no vision step to
+differentiate and nothing to low-pass — and a filter steady enough to use would reintroduce the lag
+it exists to remove. `aimTurretAt` and the lookup-table path still pass only the chassis −ω, which
+is all a pre-aim needs.
+
 ### Flywheel Speed Delivery
 The aim solve produces the speed the ball must *leave* at; a wheel held exactly there does not
 deliver it, because the ball takes energy out of the wheel on its way through.

@@ -772,7 +772,19 @@ public class ShooterSubsystem implements Subsystem {
      * @param policy         how the launch angle is chosen — see {@link ArcPolicy}
      */
     public AimSolution solveAim(Translation3d targetPosition, ArcPolicy policy) {
-        Pose2d robotPose = m_drivetrain.getState().Pose;
+        return solveAimFrom(targetPosition, policy, m_drivetrain.getState().Pose);
+    }
+
+    /**
+     * The same solve, but against an explicitly supplied robot pose rather than the current one.
+     *
+     * <p>Split out so {@link #turretRateDegPerSec} can ask what the solution would be a loop from
+     * now. Tilt still comes from the gyro — pitch and roll are read live and not projected, since
+     * the point of the projection is where the robot will have driven to, not how it will be
+     * leaning when it gets there.
+     */
+    private AimSolution solveAimFrom(
+            Translation3d targetPosition, ArcPolicy policy, Pose2d robotPose) {
         Rotation3d orientation = robotOrientation(robotPose);
         Translation3d launchPosition = calculateLaunchPosition(robotPose, orientation);
         Translation2d launchPointVel = calculateLaunchPointVelocity(robotPose);
@@ -788,6 +800,56 @@ public class ShooterSubsystem implements Subsystem {
     }
 
     /**
+     * How fast the commanded turret angle is sweeping, in degrees of turret travel per second.
+     *
+     * <p>Found by solving the same shot again from where the robot will be one lookahead from now
+     * and differencing the two turret angles. Doing it this way rather than differentiating the
+     * geometry by hand is what makes it complete: the commanded angle moves for three reasons at
+     * once — the bearing to the target rotating as the robot translates past it, the chassis yawing
+     * underneath the turret, and the motion lead itself growing and shrinking with range and
+     * heading — and a difference of two full solves carries all three without any of them having to
+     * be written down separately.
+     *
+     * <p>It is also quiet. This is a difference of two deterministic solves against the same sensor
+     * sample, not a difference of one signal against its own past, so there is no sensor noise and
+     * no vision step to differentiate, and therefore nothing to low-pass — which matters, because a
+     * filter steady enough to use would have put back the very lag this exists to remove.
+     *
+     * @param turretAngleDeg the turret angle actually being commanded, for the lookahead to
+     *                       difference against
+     */
+    private double turretRateDegPerSec(
+            Translation3d targetPosition, ArcPolicy policy, double turretAngleDeg) {
+        double lookahead = Constants.ShooterConstants.TURRET_RATE_LOOKAHEAD_SECONDS;
+        if (lookahead <= 0.0) {
+            return 0.0;
+        }
+
+        Pose2d robotPose = m_drivetrain.getState().Pose;
+        Translation2d velocity = m_velocityEstimator.getFieldRelativeVelocity();
+        double omega = m_velocityEstimator.getYawRateRadPerSec();
+        Pose2d aheadPose = new Pose2d(
+            robotPose.getX() + velocity.getX() * lookahead,
+            robotPose.getY() + velocity.getY() * lookahead,
+            robotPose.getRotation().plus(Rotation2d.fromRadians(omega * lookahead)));
+
+        double aheadAngleDeg =
+            solveAimFrom(targetPosition, policy, aheadPose).turretAngleDeg();
+        if (!Double.isFinite(aheadAngleDeg)) {
+            return 0.0;
+        }
+
+        // Both angles come out of atan2, so a shot taken straight over the robot's rear can put
+        // them on opposite sides of the branch cut and turn a fraction of a degree of sweep into
+        // very nearly 360. Take the short way round.
+        double deltaDeg = MathUtil.inputModulus(aheadAngleDeg - turretAngleDeg, -180.0, 180.0);
+        return MathUtil.clamp(
+            deltaDeg / lookahead,
+            -Constants.ShooterConstants.TURRET_MAX_FF_RATE_DEG_PER_SEC,
+            Constants.ShooterConstants.TURRET_MAX_FF_RATE_DEG_PER_SEC);
+    }
+
+    /**
      * Computes turret angle, rack angle, and flywheel speed entirely from projectile physics (no
      * lookup tables) and commands the mechanism to match. See {@link AimSolver} for the math.
      *
@@ -799,7 +861,7 @@ public class ShooterSubsystem implements Subsystem {
      * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
      */
     public void calculatePhysicsShooterActions(Translation3d targetPosition) {
-        commandSolution(solveAim(targetPosition, ArcPolicy.DESCENT_MARGIN));
+        commandSolution(targetPosition, ArcPolicy.DESCENT_MARGIN);
     }
 
     /**
@@ -814,16 +876,26 @@ public class ShooterSubsystem implements Subsystem {
      * @param targetPosition field-relative 3D position of the target (x, y, z in meters)
      */
     public void calculatePhysicsShuttleActions(Translation3d targetPosition) {
-        commandSolution(solveAim(targetPosition, ArcPolicy.FLATTEST));
+        commandSolution(targetPosition, ArcPolicy.FLATTEST);
     }
 
-    /** Records, publishes, and commands a solution. */
-    private void commandSolution(AimSolution solution) {
+    /**
+     * Solves, records, publishes, and commands.
+     *
+     * <p>Takes the target and policy rather than a finished solution because the turret is
+     * commanded with the rate its angle is sweeping at as well as the angle itself, and that rate
+     * is found by solving the same shot once more a loop ahead — see {@link #turretRateDegPerSec}.
+     */
+    private void commandSolution(Translation3d targetPosition, ArcPolicy policy) {
+        AimSolution solution = solveAim(targetPosition, policy);
+        double turretRate =
+            turretRateDegPerSec(targetPosition, policy, solution.turretAngleDeg());
+
         m_lastSolution = solution;
         publishAimTelemetry(solution);
 
         setShooterRackAngle(solution.rackAngleDeg());
-        setTurretRotatorAngle(solution.turretAngleDeg());
+        setTurretRotatorAngle(solution.turretAngleDeg(), turretRate);
         setShooterFlywheelVelocity(solution.flywheelRps());
     }
 
@@ -977,19 +1049,49 @@ public class ShooterSubsystem implements Subsystem {
     }
 
     /**
-     * Sets turret rotator position from a target angle in degrees, with omega feedforward.
-     * When the robot is rotating, the turret must counter-rotate to stay field-locked.
-     * The velocity feedforward (kV × motorVelRps) pre-applies voltage to overcome friction
-     * and inertia before the PID error has time to build up.
+     * Sets turret rotator position from a target angle in degrees, feeding forward only the
+     * counter-rotation the turret needs to stay field-locked while the chassis yaws.
+     *
+     * <p>That covers a robot spinning in place, and nothing else. Translation sweeps the commanded
+     * angle too — see the two-argument overload, which is what the shot paths use.
      */
     public void setTurretRotatorAngle(double angleDeg) {
+        // Counter-rotation: turret must spin at -omega to maintain field-relative aim.
+        setTurretRotatorAngle(
+            angleDeg, -Math.toDegrees(m_velocityEstimator.getYawRateRadPerSec()));
+    }
+
+    /**
+     * Sets turret rotator position from a target angle in degrees, with the rate that angle is
+     * itself sweeping at fed forward.
+     *
+     * <p>The rate is the load-bearing argument, and leaving it at the chassis yaw rate alone is
+     * what made shoot-on-the-move undercompensate sideways. Driving across the target — either way
+     * past it — sweeps the commanded turret angle at roughly the bearing rate, velocity over
+     * distance, whether or not the chassis is rotating at all. A {@link PositionVoltage} request
+     * given a zero velocity setpoint handles a ramping position command the worst possible way: kV
+     * contributes nothing toward the motion, and kD reads the turret's real velocity against a
+     * setpoint of zero and brakes against it. Both of those have to be made up by kP acting on
+     * error, so the turret settles into a steady trail behind its setpoint — pointing at where the
+     * solution was a few tens of milliseconds ago. Trailing a sweep is always aiming short of the
+     * lead, which is why the miss is to the inside in both directions and why driving straight at
+     * or away from the target shows nothing: that is the one direction of travel that leaves the
+     * bearing, and so the commanded angle, standing still.
+     *
+     * <p>Handing the real rate over fixes both halves at once — kV supplies the volts the motion
+     * needs, and kD is differencing against the velocity the turret is supposed to have.
+     *
+     * @param angleDeg           commanded turret angle, robot-relative
+     * @param turretRateDegPerSec rate that command is sweeping, in degrees of turret travel per
+     *                           second, positive CCW. Already includes chassis yaw.
+     */
+    public void setTurretRotatorAngle(double angleDeg, double turretRateDegPerSec) {
         double position = angleToTurretPosition(angleDeg);
         m_lastCommandedTurretRotorPosition = position;
-        // Counter-rotation: turret must spin at -omega to maintain field-relative aim.
-        // Convert rad/s → turret rot/s → motor rot/s (gear ratio is negative, so signs cancel).
-        double omega = m_velocityEstimator.getYawRateRadPerSec();
-        double turretRateRps = -omega / (2.0 * Math.PI);
+        // Convert deg/s → turret rot/s → motor rot/s (gear ratio is negative, so signs cancel).
+        double turretRateRps = turretRateDegPerSec / 360.0;
         double motorVelRps = turretRateRps / Constants.ShooterConstants.TURRET_ROTATOR_GEAR_RATIO;
+        SmartDashboard.putNumber("Shooter/TurretRateDegPerSec", turretRateDegPerSec);
         m_turretRotatorMotor.setControl(m_turretRequest.withPosition(position)
             .withVelocity(motorVelRps)
             .withFeedForward(turretFeedForwardVolts(turretRateRps, motorVelRps)));

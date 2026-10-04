@@ -134,6 +134,21 @@ public final class Constants {
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
         public static final double TURRET_ROTATOR_MAX_ANGLE = 300;
 
+        // How far ahead the aim solve is repeated to find the rate the turret's commanded angle is
+        // sweeping at, in seconds. That rate is handed to the position request as its velocity
+        // setpoint, which is what keeps the turret from trailing its own setpoint while the robot
+        // drives across the target — see ShooterSubsystem.turretRateDegPerSec(). One loop period is
+        // the natural choice: long enough that the difference quotient is well conditioned in
+        // doubles, short enough that it is still a derivative rather than an average.
+        public static final double TURRET_RATE_LOOKAHEAD_SECONDS = 0.02;
+
+        // Bound on that rate, in degrees of turret travel per second. Bearing rate goes as
+        // velocity over distance, so a robot driving past the target at arm's length asks for a
+        // sweep the turret cannot make; this keeps a near-field geometry from slamming the turret
+        // at full voltage on a feedforward it can never satisfy. Well above any rate a real shot
+        // from shooting range needs.
+        public static final double TURRET_MAX_FF_RATE_DEG_PER_SEC = 360.0;
+
         // How close the turret has to get to its commanded angle before a wrap counts as finished.
         // Only consulted while the turret is unwrapping — see ShooterSubsystem.consumeTurretWrap()
         // and the reset gate in ShooterMode. Plain tracking error, however large, never engages
