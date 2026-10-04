@@ -396,9 +396,9 @@ public class ShooterSubsystem implements Subsystem {
 
     private static final CurrentLimitsConfigs turretCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(40)
+        .withSupplyCurrentLimit(30)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(60);
+        .withStatorCurrentLimit(40);
 
     // Lookup tables: distance (meters) → value. Populate with empirical test shots.
     private static final InterpolatingDoubleTreeMap rackAngleTable = new InterpolatingDoubleTreeMap();

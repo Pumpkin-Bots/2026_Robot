@@ -408,7 +408,7 @@ public final class Constants {
         // (4) Final flywheel trim in motor RPS, applied after the speed→RPS conversion. Use this
         // for a small constant bias (e.g. ball compression losses at the exit roller) rather than
         // distorting FLYWHEEL_EFFECTIVE_DIAMETER_METERS, which also affects the sim projectile.
-        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = -3;
+        public static final double FLYWHEEL_RPS_OFFSET_DEFAULT = 4;
 
         // (5) Shoot-on-the-move authority, 0 to 1. 1.0 = fully compensate for robot velocity,
         // 0.0 = ignore it entirely (aim as if stopped). Set to 0 to isolate a stationary aiming
@@ -670,7 +670,7 @@ public final class Constants {
         // STATIONARY for both.
         // TODO: tune empirically from test shots.
         public static final double FEEDER_FORWARD_PUSH_MPS        = 0.45;
-        public static final double FEEDER_BACKWARD_PUSH_AT_90_MPS = 0.15;
+        public static final double FEEDER_BACKWARD_PUSH_AT_90_MPS = 0.35;
     }
 
     public static final class GroundIntakeConstants {
