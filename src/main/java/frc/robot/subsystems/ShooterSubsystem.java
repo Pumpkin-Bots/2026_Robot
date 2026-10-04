@@ -384,9 +384,9 @@ public class ShooterSubsystem implements Subsystem {
      */
     private static final CurrentLimitsConfigs flywheelCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
-        .withSupplyCurrentLimit(40)
+        .withSupplyCurrentLimit(60)
         .withStatorCurrentLimitEnable(true)
-        .withStatorCurrentLimit(120);
+        .withStatorCurrentLimit(160);
 
     private static final CurrentLimitsConfigs rackCurrentLimits = new CurrentLimitsConfigs()
         .withSupplyCurrentLimitEnable(true)
