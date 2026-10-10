@@ -132,7 +132,7 @@ public final class Constants {
 
         public static final double TURRET_ROTATOR_GEAR_RATIO = -20 / 200.0;
         public static final double TURRET_ROTATOR_MIN_ANGLE = -200;
-        public static final double TURRET_ROTATOR_MAX_ANGLE = 300;
+        public static final double TURRET_ROTATOR_MAX_ANGLE = 270;
 
         // How far ahead the aim solve is repeated to find the rate the turret's commanded angle is
         // sweeping at, in seconds. That rate is handed to the position request as its velocity
